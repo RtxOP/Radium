@@ -57,7 +57,7 @@ access to the Forge/Maven repositories (the Gradle wrapper downloads everything
 else, including the Forge 1.8.9 MDK with `stable_22` MCP mappings).
 
 ```bash
-git clone https://github.com/RtxOP/SodiumForge.git
+git clone https://github.com/RtxOP/Radium.git
 cd SodiumForge
 JAVA_HOME=/path/to/jdk8 ./gradlew build
 ```
