@@ -1,0 +1,18 @@
+[
+  {
+    "modid": "radium",
+    "name": "Radium",
+    "description": "SodiumForge: Radium (Sodium 0.8.15) ported to Forge 1.8.9. Massively improves FPS and reduces memory usage. Options: Video Settings -> Performance/Quality/Advanced.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "",
+    "updateUrl": "",
+    "authorList": [
+      "Rtx"
+    ],
+    "credits": "The Sodium and Fabric teams for the original mod; ported to Forge 1.8.9 by Rtx.",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]

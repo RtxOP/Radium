@@ -1,0 +1,31 @@
+# Gradle
+.gradle/
+build/
+# Ignore GUI generated files
+.idea/
+*.iml
+*.ipr
+*.iws
+# Reference clonies for upstream code lookup (not part of the build)
+forge-1.8.9-MDK/
+Radium-Reference/
+# Eclipse
+.settings/
+.project
+.classpath
+# Mac OS
+.DS_Store
+# Logs
+*.log
+# IntelliJ
+out/
+# Maven
+target/
+# Package Files (ignore built artifacts but keep gradle-wrapper.jar)
+*.war
+*.ear
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+# STS
+.apt_generated
+.factorypath

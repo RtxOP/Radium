@@ -1,0 +1,51 @@
+package net.caffeinemc.mods.sodium.client.render.chunk.compile.tasks;
+
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.estimation.MeshTaskSizeEstimator;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.data.DynamicSorter;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.data.Sorter;
+import net.minecraft.client.Minecraft;
+import net.minecraft.profiler.Profiler;
+import org.joml.Vector3dc;
+
+import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkBuildContext;
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkSortOutput;
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.executor.ChunkBuilder;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.data.DynamicData;
+import net.caffeinemc.mods.sodium.client.util.task.CancellationToken;
+
+public class ChunkBuilderSortingTask extends ChunkBuilderTask<ChunkSortOutput> {
+    private final DynamicSorter sorter;
+
+    public ChunkBuilderSortingTask(RenderSection render, int frame, Vector3dc absoluteCameraPos, DynamicSorter sorter) {
+        super(render, frame, absoluteCameraPos);
+        this.sorter = sorter;
+    }
+
+    @Override
+    public ChunkSortOutput execute(ChunkBuildContext context, CancellationToken cancellationToken) {
+        if (cancellationToken.isCancelled()) {
+            return null;
+        }
+
+        Profiler profiler = Minecraft.getMinecraft().mcProfiler;
+        profiler.startSection("translucency sorting");
+
+        this.sorter.writeIndexBuffer(this, false);
+
+        profiler.endSection();
+        return new ChunkSortOutput(this.section, this.submitTime, this.sorter);
+    }
+
+    public static ChunkBuilderSortingTask createTask(RenderSection render, int frame, Vector3dc absoluteCameraPos) {
+        if (render.getTranslucentData() instanceof DynamicData) {
+            DynamicData dynamicData = (DynamicData) render.getTranslucentData();
+            return new ChunkBuilderSortingTask(render, frame, absoluteCameraPos, dynamicData.getSorter());
+        }
+        return null;
+    }
+
+    public long estimateTaskSizeWith(MeshTaskSizeEstimator estimator) {
+        return this.sorter.getResultSize();
+    }
+}

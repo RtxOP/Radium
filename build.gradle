@@ -1,0 +1,230 @@
+buildscript {
+    repositories {
+        maven { url 'https://maven.minecraftforge.net' }
+        maven { url 'https://repo.spongepowered.org/maven' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:2.1-SNAPSHOT'
+        // MixinGradle: emits the refmap the runtime MixinLoader expects.
+        classpath 'org.spongepowered:mixingradle:0.6-SNAPSHOT'
+        // Shadow: bundles Mixin into the produced JAR.
+        // Loaded the ForgeGradle-2.x compatible way (classpath + apply)
+        // because the Plugin Portal marker resolves shadow to its 8.x
+        // release, which forbids Gradle <3.0.
+        classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.4'
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'net.minecraftforge.gradle.forge'
+apply plugin: 'org.spongepowered.mixin'
+apply plugin: 'com.github.johnrengelman.shadow'
+
+version          = '0.8.15'
+group            = 'com.github.sonagg'
+archivesBaseName = 'radium'
+
+sourceCompatibility = targetCompatibility = 1.8
+compileJava.options.encoding = 'UTF-8'
+
+minecraft {
+    version  = '1.8.9-11.15.1.2318-1.8.9'
+    runDir   = 'run'
+    // Forge 1.8.9 + ForgeGradle 2.1 were tested against SRG/MCP `stable_20`.
+    // SRG/MCP stable_22 matches MC 1.8.9 (stable_20 was generated against 1.8.8
+    // — using it on 1.8.9 produces class-name/field-name drift that surfaces as
+    // mixins referencing non-existent members at runtime).
+    mappings = 'stable_22'
+    makeObfSourceJar = false
+}
+
+// `shade` is the configuration consumed by the shadow plugin to bundle
+// Mixin into the produced JAR — Mixin is not on Forge 1.8.9's classpath.
+configurations {
+    shade
+    compile.extendsFrom shade
+}
+
+repositories {
+    maven { url 'https://repo.spongepowered.org/maven' }
+    mavenCentral()
+}
+
+dependencies {
+    // Runtime mixin — shaded into the output JAR so the produced mod
+    // is self-contained on Forge 1.8.9. The exclusions dodge the
+    // launchwrapper/guava/gson/commons-io copies that Forge/AW already
+    // ships on its own classpath.
+    shade('org.spongepowered:mixin:0.7.11-SNAPSHOT') {
+        exclude module: 'launchwrapper'
+        exclude module: 'guava'
+        exclude module: 'gson'
+        exclude module: 'commons-io'
+        exclude module: 'log4j-core'
+    }
+
+    // LWJGL 2.9.4-nightly-20150209 in place of the 2.9.2-nightly that
+    // ForgeGradle 2.1 pulls for MC 1.8.9. Mojang's canonical 1.8.9
+    // version.json pins org.lwjgl.lwjgl:2.9.4-nightly-20150209 on Linux/
+    // Windows (the stock 2.9.2-nightly-201408222 ForgeGradle defaults to is
+    // the 1.8.8-era artifact whose natives break on modern glibc). NOT the
+    // 2.9.4-babric.1 that manuthebyte's template uses on its Linux branch —
+    // that artifact exists in no public repository (verified against
+    // forge.net, central, sponge, legacyfabric, babric.dev) and its branch
+    // is untested upstream (template README: "only tested with IntelliJ").
+    compile 'org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209'
+    compile 'org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209'
+    compile 'org.lwjgl.lwjgl:lwjgl-platform:2.9.4-nightly-20150209'
+
+    // joml is a REAL runtime dependency (ChunkRenderMatrices Matrix4f fields,
+    // GlUniformMatrix4f Matrix4fc signatures) — shaded like upstream Radium
+    // does on Fabric, otherwise the first shader/chunk code hits
+    // NoClassDefFoundError.
+    // (MixinBaseFrustum is safe without it: javac inlines FrustumIntersection's
+    // int constants — verified via constant-pool check.)
+    shade 'org.joml:joml:1.10.8'
+
+    // fastutil 8.5.13 — RE-ADDED with the chunk-renderer phase per DOCS.md
+    // ("re-add the fastutil shade when porting the chunk-renderer phase —
+    // upstream uses it in ~40 files (meshing, translucent BSP sorts, ...);
+    // Forge 1.8.9 ships neither loader-level fastutil nor mixin"). The
+    // early-port JDK-collection replacements stay; these files are new
+    // ports (ChunkTracker, NativeBuffer pools, translucent sorters, BSP
+    // trees) that genuinely need Reference2ReferenceMap / LongHeaps etc.
+    // NOT on the 1.8.9 runtime classpath (verified: absent from vanilla
+    // 1.8.9 libraries, forge universal jar, and the profile's version.json).
+    compile 'it.unimi.dsi:fastutil:8.5.13'
+    shade 'it.unimi.dsi:fastutil:8.5.13'
+
+    // Sodium/Radium port libs — present at compile time. jna/slf4j are
+    // declared-but-unused in source (parity with upstream, which also never
+    // imports them); mixinextras/annotations are compile-time only.
+    compile 'io.github.llamalad7:mixinextras-common:0.3.5'
+    compile 'net.java.dev.jna:jna:5.14.0'
+    compile 'net.java.dev.jna:jna-platform:5.14.0'
+    compile 'org.slf4j:slf4j-api:2.0.9'
+    compile 'org.jetbrains:annotations:25.0.0'
+}
+
+// Force the 2.9.4 natives at resolution time (the compile deps above make the
+// classes available; these rules make the *platform* artifact resolve to the
+// modern build). Mirrors the canonical 1.8.9 mixin template's macOS branch,
+// extended to all platforms — vanilla 1.8.9 ships 2.9.4-nightly-20150209 on
+// Linux/Windows too, so there is no platform split.
+configurations.all
+{
+    resolutionStrategy
+    {
+        dependencySubstitution
+        {
+            substitute module('org.lwjgl.lwjgl:lwjgl_util:2.9.2-nightly-201408222') with module('org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209')
+            substitute module('org.lwjgl.lwjgl:lwjgl:2.9.2-nightly-201408222') with module('org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209')
+        }
+        force 'org.lwjgl.lwjgl:lwjgl-platform:2.9.4-nightly-20150209'
+    }
+}
+
+processResources {
+    inputs.property 'version',   project.version
+    inputs.property 'mcversion', project.minecraft.version
+
+    from(sourceSets.main.resources.srcDirs) {
+        include 'mcmod.info'
+        expand 'version': project.version, 'mcversion': project.minecraft.version
+    }
+    from(sourceSets.main.resources.srcDirs) {
+        exclude 'mcmod.info'
+    }
+    rename '(.+_at\\.cfg)', 'META-INF/$1'
+}
+
+shadowJar {
+    configurations       = [project.configurations.shade]
+    duplicatesStrategy   = DuplicatesStrategy.EXCLUDE
+    classifier           = ''
+    // joml 1.10.8 ships module-info.class at class-file major 53 (Java 9).
+    // ForgeGradle 2.1's reobfShadowJar (SpecialSource / ASM 5.x) only parses
+    // up to major 52, so a shaded module-info kills the build with a bare
+    // IllegalArgumentException in ClassReader. It is JPMS-only metadata —
+    // useless (and ignored) on Java 8 — so just drop it.
+    exclude 'module-info.class'
+}
+
+// Reobf is a ForgeGradle 2.1 task that runs after `shadowJar`. It
+// applies SRG remapping to the produced universal jar.
+reobf {
+    shadowJar {}
+}
+
+// ---------------------------------------------------------------------------
+// Mixin bridge jar (REQUIRED companion; install BOTH jars into mods/)
+// ---------------------------------------------------------------------------
+// Mixin 0.7.11-SNAPSHOT refuses to run from the LaunchClassLoader: on boot,
+// MixinServiceLaunchWrapperBootstrap.bootstrap() adds
+//   org.spongepowered.asm.service. / .lib. / .mixin. / .util.
+// to the LaunchClassLoader's classloader-exclusion list, so every
+// org.spongepowered class must come from the SYSTEM classloader. The only
+// FML 1.8.9 mechanism that puts a mods-dir jar on the system classloader is
+// the TweakClass cascade (CoreModManager.handleCascadingTweak ->
+// URLClassLoader.addURL on the AppClassLoader) - but a jar whose manifest
+// declares TweakClass is permanently banned from @Mod scanning, so the
+// mod jar itself can never carry it and stay visible in the mods list.
+// Hence: this dedicated bridge jar provides the on-system mixin classes +
+// the cascaded MixinTweaker, and radium-0.8.15.jar remains a normal,
+// listed @Mod (its own org/spongepowered copies are then dead weight the
+// exclusions keep off the LaunchClassLoader, harmless belt-and-braces).
+// Both jars belong in mods/; missing the bridge = boot failure with
+// NoClassDefFoundError: org/spongepowered/asm/service/IMixinService.
+task mixinBridgeJar(type: Jar) {
+    archiveName = 'mixin-0.7.11-launchwrapper-bridge.jar'
+    dependsOn shadowJar
+    from(zipTree(shadowJar.archivePath)) {
+        include 'org/spongepowered/**'
+        include 'META-INF/services/org.spongepowered.asm.service.IMixinService'
+        include 'META-INF/services/org.spongepowered.asm.service.IMixinServiceBootstrap'
+        include 'META-INF/services/org.spongepowered.asm.service.IGlobalPropertyService'
+    }
+    manifest.attributes(
+        'TweakClass' : 'org.spongepowered.asm.launch.MixinTweaker',
+        'TweakOrder' : 0,
+        'ModSide'    : 'CLIENT',
+        'TweakName'  : 'Mixin (LaunchWrapper bridge)'
+    )
+}
+assemble.dependsOn mixinBridgeJar
+
+// JAR manifest attributes instruct Forge 1.8.9 to load Mixin at
+// launcher time. Without these, mixins silently no-op.
+// (Note: 'ForceLoadAsMod' from the template is a no-op on 1.8.9 — verified
+// absent from FML's CoreModManager and LaunchWrapper — and was removed.)
+//
+// IMPORTANT: 'TweakClass' must NOT be set here (on the MOD jar). FML 1.8.9's
+// CoreModManager.discoverCoreMods() treats any mods-folder jar whose manifest
+// declares a cascaded tweaker as a pure tweaker: it registers the tweak and
+// then permanently adds the jar to ignoredModFiles (CoreModManager lines
+// 342-350), so findModDirMods() never scans it for @Mod annotations — the
+// mod boots as a coremod-only and silently vanishes from the mods list /
+// FMLFileResourcePack / the server mod handshake.
+// The mixin transformer is registered through the IFMLLoadingPlugin hook
+// (MixinLoader.getASMTransformerClass()), and the mixin SERVICES that must
+// live on the system classloader are shipped in the separate
+// mixin-0.7.11-launchwrapper-bridge.jar (task mixinBridgeJar) — see that
+// task's comment for the full classloader story.
+jar {
+    manifest.attributes(
+        'FMLCorePlugin'               : 'com.github.sonagg.radium.MixinLoader',
+        'FMLCorePluginContainsFMLMod' : 'true',
+        'ModSide'                     : 'CLIENT',
+        'MixinConfigs'                : 'radium-forge.mixins.json'
+    )
+}
+
+// Reference map: written by MixinGradle during `build`. The runtime
+// MixinLoader consults this so SRG-mapped targets in production mode
+// resolve back to obfuscated MCP names.
+sourceSets {
+    main {
+        ext.refMap = 'radium-forge.mixins.refmap.json'
+    }
+}

@@ -1,0 +1,116 @@
+package net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.bsp_tree;
+
+import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.QuadSplittingMode;
+import org.joml.Vector3fc;
+
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.quad.TQuad;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.data.TopoGraphSorting;
+import net.caffeinemc.mods.sodium.client.util.NativeBuffer;
+import net.caffeinemc.mods.sodium.api.util.NormI8;
+import dev.vexor.radium.compat.mojang.minecraft.math.SectionPos;
+
+/**
+ * A node in the BSP tree. The BSP tree is made up of nodes that split quads
+ * into groups on either side of a plane and those that lie on the plane.
+ * There's also leaf nodes that contain one or more quads.
+ * 
+ * Implementation note:
+ * - Doing a convex box test doesn't seem to bring a performance boost, even if
+ * it does trigger sometimes with man-made structures. The multi partition node
+ * probably does most of the work already.
+ * - Checking if the given quads are all coplanar doesn't recoup the cost of
+ * iterating through all the quads. It also doesn't significantly reduce the
+ * number of triggering planes (which would have a performance and memory usage
+ * benefit).
+ */
+public abstract class BSPNode {
+
+    abstract void collectSortedQuads(BSPSortState sortState, Vector3fc cameraPos);
+
+    public void collectSortedQuads(NativeBuffer nativeBuffer, Vector3fc cameraPos) {
+        this.collectSortedQuads(new BSPSortState(nativeBuffer), cameraPos);
+    }
+
+    public static BSPResult buildBSP(TQuad[] quads, SectionPos sectionPos, BSPNode oldRoot,
+            boolean prepareNodeReuse, QuadSplittingMode quadSplittingMode) {
+        // throw if there's too many quads
+        InnerPartitionBSPNode.validateQuadCount(quads.length);
+
+        // create a workspace and then the nodes figure out the recursive building.
+        // throws if the BSP can't be built, null if none is necessary
+        BSPWorkspace workspace = new BSPWorkspace(quads, sectionPos, prepareNodeReuse, quadSplittingMode);
+
+        // initialize the indexes to all quads
+        int[] initialIndexes = new int[quads.length];
+        for (int i = 0; i < quads.length; i++) {
+            initialIndexes[i] = i;
+        }
+        IntArrayList allIndexes = new IntArrayList(initialIndexes);
+
+        BSPNode rootNode = BSPNode.build(workspace, allIndexes, -1, oldRoot);
+        BSPResult result = workspace.result;
+        result.setRootNode(rootNode);
+        result.setUpdatedQuadIndexes(workspace.getFinalizedUpdatedQuads());
+        return result;
+    }
+
+    private static boolean doubleLeafPossible(TQuad quadA, TQuad quadB, boolean failOnIntersection) {
+        // check for coplanar or mutually invisible quads
+        ModelQuadFacing facingA = quadA.getFacing();
+        ModelQuadFacing facingB = quadB.getFacing();
+
+        // coplanar not aligned
+        if (!facingA.isAligned() || !facingB.isAligned()) {
+            int packedNormalA = quadA.getPackedNormal();
+            int packedNormalB = quadB.getPackedNormal();
+            // opposite normal (distance irrelevant)
+            if (NormI8.isOpposite(packedNormalA, packedNormalB)
+                    // same normal and same distance
+                    || packedNormalA == packedNormalB && quadA.getAccurateDotProduct() == quadB.getAccurateDotProduct()) {
+                return true;
+            }
+        }
+
+        // coplanar aligned
+        else if (quadA.getExtents()[facingA.ordinal()] == quadB.getExtents()[facingB.ordinal()]) {
+            return true;
+        }
+
+        // aligned facing away from each other
+        else if (facingA == facingB.getOpposite()) {
+            return true;
+        }
+
+        // aligned otherwise mutually invisible
+        else {
+            return !TopoGraphSorting.orthogonalQuadVisibleThrough(quadA, quadB, failOnIntersection)
+                    && !TopoGraphSorting.orthogonalQuadVisibleThrough(quadB, quadA, failOnIntersection);
+        }
+
+        return false;
+    }
+
+    static BSPNode build(BSPWorkspace workspace, IntArrayList indexes, int depth, BSPNode oldNode) {
+        depth++;
+
+        // pick which type of node to create for the given workspace
+        if (indexes.isEmpty()) {
+            return null;
+        } else if (indexes.size() == 1) {
+            return new LeafSingleBSPNode(indexes.getInt(0));
+        } else if (indexes.size() == 2) {
+            int quadIndexA = indexes.getInt(0);
+            int quadIndexB = indexes.getInt(1);
+            TQuad quadA = workspace.get(quadIndexA);
+            TQuad quadB = workspace.get(quadIndexB);
+
+            if (doubleLeafPossible(quadA, quadB, workspace.canSplitQuads())) {
+                return new LeafDoubleBSPNode(quadIndexA, quadIndexB);
+            }
+        }
+
+        return InnerPartitionBSPNode.build(workspace, indexes, depth, oldNode);
+    }
+}
