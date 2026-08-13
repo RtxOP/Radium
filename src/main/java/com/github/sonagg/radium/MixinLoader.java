@@ -32,17 +32,6 @@ public class MixinLoader implements IFMLLoadingPlugin {
         // boot signal so a runClient log has an unambiguous "coremod loaded" line.
         System.out.println("[Radium] Injecting with IFMLLoadingPlugin.");
 
-        // Mixin 0.7.11's LaunchWrapper service only excludes asm.service/,
-        // asm.lib/, asm.mixin/ and asm.util/ from the LaunchClassLoader; the
-        // asm.launch/ package is NOT excluded. Without this, the launch
-        // classes get loaded a SECOND time by the LaunchClassLoader (from the
-        // mod jar / bridge jar) while the bridge's TweakClass cascade already
-        // booted them on the system classloader, producing a duplicate
-        // MixinBootstrap static state and the benign-but-noisy
-        // "Multiple Mixin containers present, init suppressed for 0.7.11"
-        // warning. Excluding the package keeps exactly one copy (system).
-        Launch.classLoader.addClassLoaderExclusion("org.spongepowered.asm.launch.");
-
         MixinBootstrap.init();
         Mixins.addConfiguration(MIXIN_CONFIG);
         MixinEnvironment.getDefaultEnvironment()

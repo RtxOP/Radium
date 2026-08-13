@@ -22,14 +22,10 @@ render distance 7.**
 ## Installation
 
 1. Install Forge 1.8.9 and run the game once.
-2. Copy **both** files into your `.minecraft/mods/` folder:
-   - `radium-0.8.15.jar`
-   - `mixin-0.7.11-launchwrapper-bridge.jar` (required – Forge 1.8.9 has no bundled Mixin)
+2. Copy `radium-0.8.15.jar` into your `.minecraft/mods/` folder.
 3. Launch the game. There is nothing else to configure.
 
-> The mod installs as a Forge *core mod* (FML coremod): it does not appear in
-> the mods list, and its mixins are applied at launch. If the game fails to
-> start after installing it, remove the jar and check `latest.log`.
+> The mod installs as a standard Forge mod with an embedded FML coremod (`IFMLLoadingPlugin`). Mixins are applied at startup automatically.
 
 ## Options
 

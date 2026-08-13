@@ -52,7 +52,8 @@ public class DefaultShaderInterface implements ChunkShaderInterface {
         this.bindTexture(ChunkShaderTextureSlot.BLOCK, 0);
         this.bindTexture(ChunkShaderTextureSlot.LIGHT, 1);
 
-        uniformFadePeriod.setFloat((float) (1.0 / (SodiumClientMod.options().quality.chunkSectionFadeInTime * 1000.0))); // this is in seconds!
+        int fadeInTime = SodiumClientMod.options().quality.chunkSectionFadeInTime;
+        this.uniformFadePeriod.setFloat(fadeInTime > 0 ? (float) (1.0 / fadeInTime) : 0.0f);
 
         this.fogShader.setup();
     }

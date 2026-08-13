@@ -1,18 +1,15 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.vertex.builder;
 
+import dev.vexor.radium.compat.lwjgl.MemoryUtil;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.material.Material;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEncoder;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexType;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 
 /**
- * Grows a {@link ByteBuffer} of encoded chunk-vertex data.
- *
- * <p>Port divergence from the reference: the LWJGL2 port has no {@code org.lwjgl.system.MemoryUtil}
- * (no {@code memRealloc}/{@code memSlice}/{@code memFree}), so growth is a plain allocate+copy into
- * a new native-order direct buffer.</p>
+ * Grows an off-heap {@link ByteBuffer} of encoded chunk-vertex data.
+ * Backed by native unmanaged memory via {@link MemoryUtil} to eliminate JVM direct memory allocation overhead.
  */
 public class ChunkMeshBufferBuilder {
     private final ChunkVertexEncoder encoder;
@@ -70,19 +67,7 @@ public class ChunkMeshBufferBuilder {
     }
 
     private void reallocate(int vertexCount) {
-        int byteCount = vertexCount * this.stride;
-
-        ByteBuffer oldBuffer = this.buffer;
-        ByteBuffer newBuffer = ByteBuffer.allocateDirect(byteCount).order(ByteOrder.nativeOrder());
-
-        if (oldBuffer != null) {
-            ByteBuffer src = oldBuffer.duplicate();
-            src.position(0);
-            src.limit(Math.min(src.limit(), newBuffer.capacity()));
-            newBuffer.put(src);
-        }
-
-        this.buffer = newBuffer;
+        this.buffer = MemoryUtil.memRealloc(this.buffer, vertexCount * this.stride);
         this.vertexCapacity = vertexCount;
     }
 
@@ -94,7 +79,10 @@ public class ChunkMeshBufferBuilder {
     }
 
     public void destroy() {
-        this.buffer = null;
+        if (this.buffer != null) {
+            MemoryUtil.memFree(this.buffer);
+            this.buffer = null;
+        }
     }
 
     public boolean isEmpty() {
@@ -106,14 +94,7 @@ public class ChunkMeshBufferBuilder {
             throw new IllegalStateException("No vertex data in buffer");
         }
 
-        ByteBuffer slice = this.buffer.duplicate();
-        // JDK 8 does not preserve byte order across duplicate() (it resets to BIG_ENDIAN);
-        // restore the builder's order so absolute getInt()/decode reads stay consistent.
-        slice.order(this.buffer.order());
-        slice.position(0);
-        slice.limit(this.stride * this.vertexCount);
-
-        return slice;
+        return MemoryUtil.memSlice(this.buffer, 0, this.stride * this.vertexCount);
     }
 
     public int count() {

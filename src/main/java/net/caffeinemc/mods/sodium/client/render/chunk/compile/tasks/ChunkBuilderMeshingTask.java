@@ -37,7 +37,6 @@ import net.minecraft.crash.CrashReportCategory;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.ReportedException;
-import net.minecraft.profiler.Profiler;
 import net.minecraft.world.WorldType;
 import org.joml.Vector3dc;
 
@@ -66,7 +65,6 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
     @Override
     public ChunkBuildOutput execute(ChunkBuildContext buildContext, CancellationToken cancellationToken) {
-        Profiler profiler = Minecraft.getMinecraft().mcProfiler;
         BuiltSectionInfo.Builder renderData = new BuiltSectionInfo.Builder();
         DirectionalVisGraph occluder = new DirectionalVisGraph();
 
@@ -97,7 +95,6 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         }
         BlockRenderContext context = new BlockRenderContext(slice, collector);
 
-        profiler.startSection("render blocks");
         try {
             for (int y = minY; y < maxY; y++) {
                 if (cancellationToken.isCancelled()) {

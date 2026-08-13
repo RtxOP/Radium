@@ -157,60 +157,8 @@ reobf {
     shadowJar {}
 }
 
-// ---------------------------------------------------------------------------
-// Mixin bridge jar (REQUIRED companion; install BOTH jars into mods/)
-// ---------------------------------------------------------------------------
-// Mixin 0.7.11-SNAPSHOT refuses to run from the LaunchClassLoader: on boot,
-// MixinServiceLaunchWrapperBootstrap.bootstrap() adds
-//   org.spongepowered.asm.service. / .lib. / .mixin. / .util.
-// to the LaunchClassLoader's classloader-exclusion list, so every
-// org.spongepowered class must come from the SYSTEM classloader. The only
-// FML 1.8.9 mechanism that puts a mods-dir jar on the system classloader is
-// the TweakClass cascade (CoreModManager.handleCascadingTweak ->
-// URLClassLoader.addURL on the AppClassLoader) - but a jar whose manifest
-// declares TweakClass is permanently banned from @Mod scanning, so the
-// mod jar itself can never carry it and stay visible in the mods list.
-// Hence: this dedicated bridge jar provides the on-system mixin classes +
-// the cascaded MixinTweaker, and radium-0.8.15.jar remains a normal,
-// listed @Mod (its own org/spongepowered copies are then dead weight the
-// exclusions keep off the LaunchClassLoader, harmless belt-and-braces).
-// Both jars belong in mods/; missing the bridge = boot failure with
-// NoClassDefFoundError: org/spongepowered/asm/service/IMixinService.
-task mixinBridgeJar(type: Jar) {
-    archiveName = 'mixin-0.7.11-launchwrapper-bridge.jar'
-    dependsOn shadowJar
-    from(zipTree(shadowJar.archivePath)) {
-        include 'org/spongepowered/**'
-        include 'META-INF/services/org.spongepowered.asm.service.IMixinService'
-        include 'META-INF/services/org.spongepowered.asm.service.IMixinServiceBootstrap'
-        include 'META-INF/services/org.spongepowered.asm.service.IGlobalPropertyService'
-    }
-    manifest.attributes(
-        'TweakClass' : 'org.spongepowered.asm.launch.MixinTweaker',
-        'TweakOrder' : 0,
-        'ModSide'    : 'CLIENT',
-        'TweakName'  : 'Mixin (LaunchWrapper bridge)'
-    )
-}
-assemble.dependsOn mixinBridgeJar
-
-// JAR manifest attributes instruct Forge 1.8.9 to load Mixin at
-// launcher time. Without these, mixins silently no-op.
-// (Note: 'ForceLoadAsMod' from the template is a no-op on 1.8.9 — verified
-// absent from FML's CoreModManager and LaunchWrapper — and was removed.)
-//
-// IMPORTANT: 'TweakClass' must NOT be set here (on the MOD jar). FML 1.8.9's
-// CoreModManager.discoverCoreMods() treats any mods-folder jar whose manifest
-// declares a cascaded tweaker as a pure tweaker: it registers the tweak and
-// then permanently adds the jar to ignoredModFiles (CoreModManager lines
-// 342-350), so findModDirMods() never scans it for @Mod annotations — the
-// mod boots as a coremod-only and silently vanishes from the mods list /
-// FMLFileResourcePack / the server mod handshake.
-// The mixin transformer is registered through the IFMLLoadingPlugin hook
-// (MixinLoader.getASMTransformerClass()), and the mixin SERVICES that must
-// live on the system classloader are shipped in the separate
-// mixin-0.7.11-launchwrapper-bridge.jar (task mixinBridgeJar) — see that
-// task's comment for the full classloader story.
+// JAR manifest attributes instruct Forge 1.8.9 to load Mixin via FMLCorePlugin at
+// startup time. Mixin 0.7.11 initializes cleanly on the LaunchClassLoader in a single JAR.
 jar {
     manifest.attributes(
         'FMLCorePlugin'               : 'com.github.sonagg.radium.MixinLoader',

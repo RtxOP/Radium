@@ -18,6 +18,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.util.BlockPos;
 import net.minecraft.client.renderer.DestroyBlockProgress;
+import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.util.EnumWorldBlockLayer;
 import net.minecraft.util.Vec3;
 import org.joml.Matrix4f;
@@ -124,6 +125,7 @@ public abstract class LevelRendererMixin implements LevelRendererExtension {
         }
 
         this.mc.entityRenderer.enableLightmap();
+        this.mc.getTextureManager().bindTexture(TextureMap.locationBlocksTexture);
 
         try {
             this.renderer.drawChunkLayer(blockLayer, matrices, x, y, z);

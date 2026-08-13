@@ -111,7 +111,11 @@ public class SodiumWorldRenderer {
      * chunk rendering (the reference's patched camera does the same), so no normalization is applied.</p>
      */
     public static ChunkRenderMatrices captureGlMatrices() {
-        return new ChunkRenderMatrices(readGlMatrix(GL11.GL_PROJECTION_MATRIX), readGlMatrix(GL11.GL_MODELVIEW_MATRIX));
+        Matrix4f projection = readGlMatrix(GL11.GL_PROJECTION_MATRIX);
+        Matrix4f modelView = readGlMatrix(GL11.GL_MODELVIEW_MATRIX);
+        // Zero out translation to prevent double-applying camera eye translation with u_RegionOffset
+        modelView.setTranslation(0.0f, 0.0f, 0.0f);
+        return new ChunkRenderMatrices(projection, modelView);
     }
 
     private static Matrix4f readGlMatrix(int matrixMode) {
