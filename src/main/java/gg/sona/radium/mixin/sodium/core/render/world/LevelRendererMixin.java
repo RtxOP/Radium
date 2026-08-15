@@ -21,7 +21,6 @@ import net.minecraft.client.renderer.DestroyBlockProgress;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.util.EnumWorldBlockLayer;
 import net.minecraft.util.Vec3;
-import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -148,18 +147,7 @@ public abstract class LevelRendererMixin implements LevelRendererExtension {
      */
     @Overwrite
     public void setupTerrain(Entity entity, double tickDelta, ICamera camera, int frame, boolean spectator) {
-        // The reference derives its frustum from the camera's projection/model matrices. 1.8.9 has no Camera
-        // class; vanilla configures the fixed-function GL matrices in EntityRenderer.setupCameraTransform() before
-        // setupTerrain runs, so read them back (translation zeroed, matching captureGlMatrices). Vanilla's own
-        // ClippingHelper notch-extracts planes from the transposed matrix product (M*P), yielding a degenerate
-        // frustum. joml's Matrix4f(FloatBuffer) reads the GL column-major data in row-major naming order, so the
-        // read-back projection/model-view are TRANSPOSES of the GL matrices; the shader upload (row-major get() +
-        // transpose=false) transposes them back, so rendering is unaffected. For FrustumIntersection to extract the
-        // planes of the true clip transform P*M (as the block shader applies it), it must be given the transpose of
-        // that product -- i.e. modelView.mul(projection) on these read-back matrices.
-        ChunkRenderMatrices matrices = SodiumWorldRenderer.captureGlMatrices();
-        Matrix4f combined = new Matrix4f(matrices.modelView).mul(matrices.projection);
-        SimpleFrustum frustum = new SimpleFrustum(new FrustumIntersection(combined, false));
+        SimpleFrustum frustum = new SimpleFrustum(camera);
         Vec3 transform = entity.getPositionEyes((float) tickDelta);
         Viewport viewport = new Viewport(frustum, transform);
         boolean updateChunksImmediately = false;
