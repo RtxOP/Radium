@@ -107,8 +107,8 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
                 gg.sona.radium.diag.Diag.restoreState(noCull, noDepth, noBlend);
             }
 
-            gg.sona.radium.diag.Diag.drawProbe(resources.getGeometryBuffer(),
-                    useIndexedTessellation ? resources.getIndexBuffer() : this.sharedIndexBuffer.getBufferObject(), batch);
+            gg.sona.radium.diag.Diag.drawProbe(region.getResources().getGeometryBuffer(),
+                    useIndexedTessellation ? region.getResources().getIndexBuffer() : this.sharedIndexBuffer.getBufferObject(), batch);
             gg.sona.radium.diag.Diag.count("drawBatch", "drawBatch pass=" + renderPass
                     + " region=(" + region.getChunkX() + "," + region.getChunkY() + "," + region.getChunkZ() + ")"
                     + " draws=" + batch.size + " idxBytes=" + batch.getIndexBufferSize());
