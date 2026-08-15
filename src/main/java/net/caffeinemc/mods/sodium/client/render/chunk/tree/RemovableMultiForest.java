@@ -59,6 +59,15 @@ public class RemovableMultiForest implements RemovableForest<RemovableTree> {
     }
 
     @Override
+    public int countSections() {
+        int count = 0;
+        for (RemovableTree tree : this.trees.values()) {
+            count += AbstractTraversableBiForest.countTreeSections(tree);
+        }
+        return count;
+    }
+
+    @Override
     public void traverse(CoordinateSectionVisitor visitor, Viewport viewport, float distanceLimit) {
         CameraTransform transform = viewport.getTransform();
         int cameraSectionX = transform.intX >> 4;
