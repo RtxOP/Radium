@@ -6,23 +6,23 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * Mirrors the reference Radium client mod entry: owns the runtime options
- * singleton, loads (and on first run writes) the JSON config at Forge init.
+ * singleton and loads (and on first run writes) the JSON config.
+ *
+ * <p>There is no Forge {@code @Mod} entry point: the jar boots mixin via the
+ * manifest {@code TweakClass} cascade, which FML 1.8.x records in
+ * {@code CoreModManager.loadedCoremods} and skips during {@code @Mod} discovery.
+ * The config therefore loads lazily on first {@link #options()} access.
  */
 public class SodiumClientMod {
     private static SodiumOptions CONFIG;
     private static final Logger LOGGER = LogManager.getLogger("Radium");
 
-    private static String MOD_VERSION;
-
-    public static void onInitialization(String version) {
-        MOD_VERSION = version;
-
-        CONFIG = loadConfig();
-    }
+    /** Matches the project version in build.gradle and mcmod.info. */
+    private static final String MOD_VERSION = "0.8.15";
 
     public static SodiumOptions options() {
         if (CONFIG == null) {
-            throw new IllegalStateException("Config not yet available");
+            CONFIG = loadConfig();
         }
 
         return CONFIG;

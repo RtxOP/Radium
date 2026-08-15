@@ -25,7 +25,7 @@ render distance 7.**
 2. Copy `radium-0.8.15.jar` into your `.minecraft/mods/` folder.
 3. Launch the game. There is nothing else to configure.
 
-> The mod installs as a standard Forge mod with an embedded FML coremod (`IFMLLoadingPlugin`). Mixins are applied at startup automatically.
+> The mod installs as a single jar; the manifest boots the embedded Mixin 0.7.11 runtime via FML 1.8.x's `TweakClass` tweak cascade. Mixins are applied at startup automatically.
 
 ## Options
 
@@ -59,13 +59,14 @@ JAVA_HOME=/path/to/jdk8 ./gradlew build
 ```
 
 The output jar is `build/libs/radium-0.8.15.jar` — a fat jar with Mixin
-shaded in and a runtime refmap. Copy it (plus the mixin bridge jar) into
-`mods/` as described above.
+shaded in and a runtime refmap. Copy it into `mods/` (single jar — the
+manifest boots mixin via the `TweakClass: MixinTweaker` cascade, see DOCS.md §5.2).
 
 ## How it works
 
-- **Coremod bootstrap** — `MixinLoader` (in `com.github.sonagg.radium`) injects
-  the Mixin 0.7.11 runtime into the Forge 1.8.9 launch and applies the mixins
+- **Coremod bootstrap** — the jar manifest (`TweakClass` + `MixinConfigs`)
+  boots the Mixin 0.7.11 runtime through FML 1.8.x's tweak cascade, which
+  places the mixin classes on the system classloader and applies the mixins
   from `radium-forge.mixins.json`.
 - **Renderer** — the full Radium pipeline was ported: `RenderSectionManager`,
   chunk mesh building (`ChunkBuilderMeshingTask`, region-based uploads),
@@ -83,7 +84,7 @@ shaded in and a runtime refmap. Copy it (plus the mixin bridge jar) into
 - LWJGL2 only (i.e. the stock 1.8.9 client). Not compatible with LWJGL3
   wrapper backports.
 - The render-distance slider is extended to 32 chunks (vanilla 1.8.9 stops at 16).
-- `.minecraft/mods/` must contain only the two jars above; other Forge mods
+- `.minecraft/mods/` must contain the single Radium jar; other Forge mods
   that replace the chunk renderer will conflict.
 
 ## Credits

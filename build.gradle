@@ -6,7 +6,7 @@ buildscript {
     }
     dependencies {
         classpath 'net.minecraftforge.gradle:ForgeGradle:2.1-SNAPSHOT'
-        // MixinGradle: emits the refmap the runtime MixinLoader expects.
+        // MixinGradle: emits the refmap the runtime MixinPlatformAgentDefault expects.
         classpath 'org.spongepowered:mixingradle:0.6-SNAPSHOT'
         // Shadow: bundles Mixin into the produced JAR.
         // Loaded the ForgeGradle-2.x compatible way (classpath + apply)
@@ -143,6 +143,9 @@ shadowJar {
     configurations       = [project.configurations.shade]
     duplicatesStrategy   = DuplicatesStrategy.EXCLUDE
     classifier           = ''
+    // Merge META-INF/services files: the tweak-cascade boot path locates the
+    // launchwrapper service via ServiceLoader (IMixinService + bootstrap).
+    mergeServiceFiles()
     // joml 1.10.8 ships module-info.class at class-file major 53 (Java 9).
     // ForgeGradle 2.1's reobfShadowJar (SpecialSource / ASM 5.x) only parses
     // up to major 52, so a shaded module-info kills the build with a bare
@@ -157,19 +160,40 @@ reobf {
     shadowJar {}
 }
 
-// JAR manifest attributes instruct Forge 1.8.9 to load Mixin via FMLCorePlugin at
-// startup time. Mixin 0.7.11 initializes cleanly on the LaunchClassLoader in a single JAR.
+// JAR manifest attributes boot Mixin 0.7.11 on Forge 1.8.9 via the tweak
+// cascade — no IFMLLoadingPlugin involved.
+//
+// Why this works (verified against FML source, branch "1.8", and the
+// mixin-0.7.11-SNAPSHOT artifact bytecode):
+// 1. Mixin 0.7.11's MixinServiceLaunchWrapperBootstrap adds LaunchClassLoader
+//    exclusions for org.spongepowered.asm.{service,lib,mixin,util}., so mixin
+//    classes must resolve from the SYSTEM classloader.
+// 2. FML 1.8.x CoreModManager.discoverCoreMods() scans the mods/ directory
+//    itself (setupCoreModDir() returns <mc>/mods). A manifest TweakClass
+//    makes handleCascadingTweak() inject the jar URL into the system
+//    classloader and register the tweaker (FML CoreModManager.java:296-305).
+// 3. MixinTweaker.injectIntoClassLoader() runs MixinBootstrap.inject(), and
+//    the MixinPlatformAgentDefault agent reads this jar's MixinConfigs
+//    manifest attribute and calls Mixins.addConfiguration() for it
+//    (verified in 0.7.11 bytecode: MixinPlatformAgentDefault, MixinTweaker).
+// 4. The jar is recorded in CoreModManager.loadedCoremods, so
+//    ModDiscoverer.findModDirMods() skips it: it is never scanned for @Mod.
+//    Radium is a pure coremod here; config loads lazily on first
+//    SodiumClientMod.options() access.
+// Relocating org.spongepowered.asm is NOT an alternative: MixinService
+// matches the ServiceLoader-discovered service against
+// IMixinServiceBootstrap.getServiceClassName() — a string constant the
+// relocator does not rewrite — yielding "No mixin host service is available".
 jar {
     manifest.attributes(
-        'FMLCorePlugin'               : 'com.github.sonagg.radium.MixinLoader',
-        'FMLCorePluginContainsFMLMod' : 'true',
-        'ModSide'                     : 'CLIENT',
-        'MixinConfigs'                : 'radium-forge.mixins.json'
+        'TweakClass'  : 'org.spongepowered.asm.launch.MixinTweaker',
+        'TweakOrder'  : '0',
+        'MixinConfigs': 'radium-forge.mixins.json'
     )
 }
 
-// Reference map: written by MixinGradle during `build`. The runtime
-// MixinLoader consults this so SRG-mapped targets in production mode
+// Reference map: written by MixinGradle during `build`. The runtime mixin
+// platform consults this so SRG-mapped targets in production mode
 // resolve back to obfuscated MCP names.
 sourceSets {
     main {

@@ -28,7 +28,6 @@ import net.caffeinemc.mods.sodium.client.world.LevelSlice;
 import net.caffeinemc.mods.sodium.client.world.cloned.ChunkRenderContext;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.model.IBakedModel;
 import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
 import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
@@ -171,7 +170,6 @@ int blockType = block.getRenderType();
             // Create a new crash report for other exceptions (e.g. thrown in getQuads)
             throw fillCrashInfo(CrashReport.makeCrashReport(ex, "Encountered exception while building chunk meshes"), slice, blockPos);
         }
-        profiler.endStartSection("mesh appenders");
 
         SortType sortType = SortType.NONE;
         if (sortEnabled) {
@@ -180,10 +178,8 @@ int blockType = block.getRenderType();
 
         // cancellation opportunity right before translucent sorting
         if (cancellationToken.isCancelled()) {
-            profiler.endSection();
             return null;
         }
-        profiler.endStartSection("translucency sorting");
 
         boolean reuseUploadedData = false;
         TranslucentData translucentData = null;
@@ -200,8 +196,6 @@ int blockType = block.getRenderType();
             translucentData = collector.getTranslucentData(oldData, this);
             reuseUploadedData = !this.forceSort && translucentData == oldData;
         }
-
-        profiler.endStartSection("meshing");
 
         Map<TerrainRenderPass, BuiltSectionMeshParts> meshes = new Reference2ReferenceOpenHashMap<>();
         int visibleSlices = DefaultChunkRenderer.getVisibleFaces(
@@ -245,8 +239,6 @@ int blockType = block.getRenderType();
                 output.setSorter(sorter);
             }
         }
-
-        profiler.endSection();
 
         return output;
     }
