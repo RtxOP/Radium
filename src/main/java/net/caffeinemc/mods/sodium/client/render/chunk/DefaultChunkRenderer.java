@@ -102,6 +102,7 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
                     + " draws=" + batch.size + " idxBytes=" + batch.getIndexBufferSize());
             gg.sona.radium.diag.Diag.uniformProbe();
             gg.sona.radium.diag.Diag.glStateProbe();
+            gg.sona.radium.diag.Diag.pixelProbe();
         }
 
         super.end(renderPass);

@@ -244,4 +244,72 @@ public final class Diag {
                 + " viewport=(" + vp0 + "," + vp1 + "," + vp2 + "," + vp3 + ")"
                 + " ubo=" + uboBinding + "[" + ubo + "]");
     }
+
+    /**
+     * Read back the pixel colours in the centre of the current read framebuffer (1/sec). If the ground should be
+     * visible at screen centre and the readback still shows the fog/sky colour, chunk geometry is not reaching the
+     * framebuffer; if it shows grass/dirt colours, geometry IS drawing (so the problem is elsewhere, e.g. a colour
+     * pipeline issue).
+     */
+    public static void pixelProbe() {
+        long now = System.currentTimeMillis();
+        Long prev = lastLogAt.get("pixelProbe");
+        if (prev != null && now - prev < 1000L) {
+            return;
+        }
+        lastLogAt.put("pixelProbe", now);
+
+        IntBuffer ib = BufferUtils.createIntBuffer(16);
+        GL11.glGetInteger(GL11.GL_VIEWPORT, ib);
+        int vw = ib.get(2), vh = ib.get(3);
+        int cx = vw / 2, cy = vh / 2;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("pixels center=(").append(cx).append(',').append(cy).append(')');
+        int[] dx = { 0, -vw / 4, vw / 4, 0, 0 };
+        int[] dy = { 0, 0, 0, -vh / 4, vh / 4 };
+        ByteBuffer px = BufferUtils.createByteBuffer(4);
+        for (int i = 0; i < dx.length; i++) {
+            px.clear();
+            GL11.glReadPixels(cx + dx[i], cy + dy[i], 1, 1, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, px);
+            int r = px.get(0) & 0xFF, g = px.get(1) & 0xFF, b = px.get(2) & 0xFF, a = px.get(3) & 0xFF;
+            sb.append(String.format(" [%d,%d,%d,%d]", r, g, b, a));
+        }
+        System.out.println("[RadiumDiag] " + sb);
+    }
+
+    /**
+     * Decode the first few vertices of a freshly-built section mesh (1/sec). Positions are decoded from the
+     * CompactChunkVertex 20-bit packed layout: p = (q / 2^20) * 32.0 - 8.0. If positions are sane (0..16 within a
+     * section) and colours are non-black, the mesh content is correct and any invisibility is downstream (texture,
+     * lightmap, GL state).
+     */
+    public static void meshDump(ByteBuffer buf, int stride, int vertexTotal) {
+        long now = System.currentTimeMillis();
+        Long prev = lastLogAt.get("meshDump");
+        if (prev != null && now - prev < 1000L) {
+            return;
+        }
+        lastLogAt.put("meshDump", now);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("mesh verts=").append(vertexTotal);
+        int n = Math.min(vertexTotal, 6);
+        for (int i = 0; i < n; i++) {
+            int base = i * stride;
+            int hi = buf.getInt(base);
+            int lo = buf.getInt(base + 4);
+            int argb = buf.getInt(base + 8);
+            int tex = buf.getInt(base + 12);
+            int light = buf.getInt(base + 16);
+            int x = ((hi & 0x3FF) << 10) | (lo & 0x3FF);
+            int y = (((hi >>> 10) & 0x3FF) << 10) | ((lo >>> 10) & 0x3FF);
+            int z = (((hi >>> 20) & 0x3FF) << 10) | ((lo >>> 20) & 0x3FF);
+            float fx = (x / 1048576.0f) * 32.0f - 8.0f;
+            float fy = (y / 1048576.0f) * 32.0f - 8.0f;
+            float fz = (z / 1048576.0f) * 32.0f - 8.0f;
+            sb.append(String.format(" v%d=(%.2f,%.2f,%.2f) c=%08X t=%08X l=%08X", i, fx, fy, fz, argb, tex, light));
+        }
+        System.out.println("[RadiumDiag] " + sb);
+    }
 }
