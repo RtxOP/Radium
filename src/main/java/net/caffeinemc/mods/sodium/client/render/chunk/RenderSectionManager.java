@@ -279,6 +279,11 @@ public class RenderSectionManager {
 
     public void finalizeRenderLists(Viewport viewport, boolean updateChunksImmediately) {
         boolean syncRender = this.cameraTimingControl.getShouldRenderSync();
+        gg.sona.radium.diag.Diag.throttle("finalize", "finalizeRenderLists updateImmediate=" + updateChunksImmediately
+                + " syncRender=" + syncRender
+                + " needsList=" + this.needsRenderListUpdate
+                + " needsGraph=" + this.needsGraphUpdate
+                + " pendingTask=" + (this.pendingTask == null ? -1 : (this.pendingTask.isDone() ? 1 : 0)));
         if (updateChunksImmediately) {
             this.renderOutOfGraph(viewport);
         } else if (this.needsRenderListUpdate) {
@@ -385,6 +390,17 @@ public class RenderSectionManager {
         this.cullResults.put(CullType.WIDE, result.getCullTreeWide());
         this.taskLists = result.getPendingTaskLists();
         this.invalidateRenderLists();
+
+        DeferredTaskList pending = result.getPendingTaskLists();
+        gg.sona.radium.diag.Diag.throttle("cullResult", "cullResult frame=" + this.frame
+                + " wide=" + countSections(result.getCullTreeWide())
+                + " reg=" + countSections(result.getCullTreeRegular())
+                + " loc=" + countSections(result.getCullTreeLocal())
+                + " pending=" + (pending == null ? -1 : pending.size()));
+    }
+
+    private static int countSections(SectionTree tree) {
+        return tree.tree.countSections();
     }
 
     private boolean useAsyncCulling() {
@@ -433,6 +449,21 @@ public class RenderSectionManager {
         this.renderLists = visibleCollector.createRenderLists(viewport);
 
         this.renderTree = bestTree;
+
+        this.logRenderListStats("tree");
+    }
+
+    private void logRenderListStats(String path) {
+        int regionCount = 0;
+        int sectionCount = 0;
+        java.util.Iterator<ChunkRenderList> it = this.renderLists.iterator(false);
+        while (it.hasNext()) {
+            ChunkRenderList list = it.next();
+            regionCount++;
+            sectionCount += list.getSectionsWithGeometryCount();
+        }
+        gg.sona.radium.diag.Diag.throttle("renderLists", "renderLists path=" + path
+                + " regions=" + regionCount + " sections=" + sectionCount);
     }
 
     private void renderOutOfGraph(Viewport viewport) {
@@ -447,6 +478,8 @@ public class RenderSectionManager {
 
         visitor.prepareForTraversal();
         this.renderTree = visitor;
+
+        this.logRenderListStats("fallback");
     }
     private boolean isOutOfGraph(SectionPos pos) {
         int sectionY = pos.getY();
@@ -766,6 +799,9 @@ public class RenderSectionManager {
                     changes |= SectionInfoChange.RENDER_LIST;
                 }
             }
+
+            gg.sona.radium.diag.Diag.count("patchPresent", "patchPresent section=" + chunkX + "," + chunkY + "," + chunkZ
+                    + " blocking=" + chunkBuildOutput.blockingTask + " immediate=" + this.isSectionImmediatePresentationCandidate(viewport, section));
 
             // collect present patches if we need to
             if (pendingPresentPatches != null) {

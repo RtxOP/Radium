@@ -34,7 +34,7 @@ public final class SimpleFrustum implements Frustum {
 
         float size = Viewport.CHUNK_SECTION_PADDED_RADIUS;
 
-        gg.sona.radium.diag.Diag.once("frustum-planes", "frustum planes: nx=" + fmt(planes[0])
+        gg.sona.radium.diag.Diag.throttle("frustum-planes", "frustum planes: nx=" + fmt(planes[0])
                 + " px=" + fmt(planes[1]) + " ny=" + fmt(planes[2]) + " py=" + fmt(planes[3])
                 + " nz=" + fmt(planes[4]) + " pz=" + fmt(planes[5]));
 

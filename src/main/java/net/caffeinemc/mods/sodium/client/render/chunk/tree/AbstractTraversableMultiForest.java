@@ -21,6 +21,17 @@ public abstract class AbstractTraversableMultiForest<T extends TraversableTree> 
     }
 
     @Override
+    public int countSections() {
+        int count = 0;
+        for (T tree : this.trees) {
+            if (tree != null) {
+                count += AbstractTraversableBiForest.countTreeSections(tree);
+            }
+        }
+        return count;
+    }
+
+    @Override
     public void traverse(CoordinateSectionVisitor visitor, Viewport viewport, float distanceLimit) {
         SectionPos cameraPos = viewport.getChunkCoord();
         int cameraSectionX = cameraPos.getX();

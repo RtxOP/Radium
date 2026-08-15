@@ -17,6 +17,23 @@ public abstract class AbstractTraversableBiForest<T extends TraversableTree> ext
     }
 
     @Override
+    public int countSections() {
+        int count = AbstractTraversableBiForest.countTreeSections(this.mainTree);
+        if (this.secondaryTree != null) {
+            count += AbstractTraversableBiForest.countTreeSections(this.secondaryTree);
+        }
+        return count;
+    }
+
+    static int countTreeSections(Tree tree) {
+        int count = 0;
+        for (long entry : tree.tree) {
+            count += Long.bitCount(entry);
+        }
+        return count;
+    }
+
+    @Override
     public void traverse(CoordinateSectionVisitor visitor, Viewport viewport, float distanceLimit) {
         // no sorting is necessary because we assume the camera will never be closer to the secondary tree than the main tree
         this.mainTree.traverse(visitor, viewport, distanceLimit, this.buildDistance);

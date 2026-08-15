@@ -417,6 +417,9 @@ public class OcclusionCuller {
 
     private void visitNode(WriteQueue<RenderSection> queue, RenderSection section, int outgoingDirection, boolean hasLocalPath, boolean hasRegularPath, boolean hasWidePath) {
         if (section.getSearchToken() != this.token) {
+            gg.sona.radium.diag.Diag.count("cullVisited", "cullVisited token=" + this.token
+                    + " section=" + section.getChunkX() + "," + section.getChunkY() + "," + section.getChunkZ());
+
             // This is the first time we are visiting this section during the given token, so we must
             // reset the state.
             section.resetOnFirstVisit(this.token);

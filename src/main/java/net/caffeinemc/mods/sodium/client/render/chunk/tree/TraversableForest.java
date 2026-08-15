@@ -9,6 +9,8 @@ public interface TraversableForest<T extends TraversableTree> extends Forest<T> 
 
     void traverse(CoordinateSectionVisitor visitor, Viewport viewport, float distanceLimit);
 
+    int countSections();
+
     default boolean addPatch(int x, int y, int z) {
         return this.add(x, y, z, TraversableTree::addPatch);
     }
