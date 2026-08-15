@@ -21,6 +21,7 @@ import net.minecraft.client.renderer.DestroyBlockProgress;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.util.EnumWorldBlockLayer;
 import net.minecraft.util.Vec3;
+import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -147,7 +148,15 @@ public abstract class LevelRendererMixin implements LevelRendererExtension {
      */
     @Overwrite
     public void setupTerrain(Entity entity, double tickDelta, ICamera camera, int frame, boolean spectator) {
-        SimpleFrustum frustum = new SimpleFrustum(camera);
+        // The reference derives its frustum from the camera's projection/model matrices. 1.8.9 has no Camera
+        // class; vanilla configures the fixed-function GL matrices in EntityRenderer.setupCameraTransform() before
+        // setupTerrain runs, so read them back (translation zeroed, matching captureGlMatrices). Vanilla's own
+        // ClippingHelper notch-extracts planes from the transposed matrix product (M*P), yielding a degenerate
+        // frustum; building the FrustumIntersection from the combined P*M matrix (the exact clip transform the
+        // block shader applies) produces the correct one.
+        ChunkRenderMatrices matrices = SodiumWorldRenderer.captureGlMatrices();
+        Matrix4f combined = new Matrix4f(matrices.projection).mul(matrices.modelView);
+        SimpleFrustum frustum = new SimpleFrustum(new FrustumIntersection(combined, false));
         Vec3 transform = entity.getPositionEyes((float) tickDelta);
         Viewport viewport = new Viewport(frustum, transform);
         boolean updateChunksImmediately = false;
