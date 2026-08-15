@@ -337,12 +337,11 @@ public final class Diag {
     }
 
     /**
-     * Boot-test probe: read back the GPU geometry and index buffers, decode the first vertices, and validate the
-     * draw-command parameters against the buffer sizes. Run right after executeDrawBatch.
-     *
-     * <p>If the GPU geometry buffer matches the CPU mesh (see meshDump) and the shared index buffer holds the
-     * repeating quad pattern but the framebuffer still shows only the clear colour, the failure is in GL state or
-     * rasterisation; if the readback differs from the CPU mesh (or is all zeros), the upload/index path is broken.</p>
+     * Boot-test probe: read back the GPU geometry at the first draw command's baseVertex, decode the vertices, and
+     * project them to NDC on the CPU using the live shader uniforms. If the GPU data at baseVertex matches the CPU
+     * mesh (see meshDump) and the projected NDC is inside the viewport, the geometry should be visible and the bug
+     * is in rasterisation state (cull/depth); if the GPU data is zeros/garbage or the NDC is off-screen/behind the
+     * camera, the upload or transform path is broken. Run right after executeDrawBatch.
      */
     public static void drawProbe(GlBuffer geometryBuffer, GlBuffer indexBuffer, MultiDrawBatch batch) {
         long now = System.currentTimeMillis();
@@ -355,18 +354,46 @@ public final class Diag {
         StringBuilder sb = new StringBuilder("drawProbe");
         try {
             int gSize = bufferSize(GL15.GL_ARRAY_BUFFER, geometryBuffer.handle());
-            sb.append(" geomSize=").append(gSize).append(" verts=").append(gSize / CompactChunkVertex.STRIDE);
-            if (gSize > 0) {
-                ByteBuffer gbuf = BufferUtils.createByteBuffer(Math.min(gSize, 6 * CompactChunkVertex.STRIDE));
-                readback(GL15.GL_ARRAY_BUFFER, geometryBuffer.handle(), gbuf);
-                decodeVertices(sb, gbuf);
+            int iSize = bufferSize(GL15.GL_ELEMENT_ARRAY_BUFFER, indexBuffer.handle());
+            int maxVertex = gSize / CompactChunkVertex.STRIDE;
+            int maxIndex = iSize / 4;
+            sb.append(" geomSize=").append(gSize).append(" idxBufSize=").append(iSize);
+
+            int program = org.lwjgl.opengl.GL20.glGetInteger(org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM);
+            float[] proj = uniformMat4(program, "u_ProjectionMatrix");
+            float[] mv = uniformMat4(program, "u_ModelViewMatrix");
+            float[] reg = uniformVec3(program, "u_RegionOffset");
+
+            int outOfRange = 0;
+            for (int i = 0; i < batch.size; i++) {
+                int count = batch.elementCounts.get(i);
+                int base = batch.baseVertices.get(i);
+                long elemOff = batch.elementOffsets.get(i);
+                int vertexSpan = (count / 6) * 4;
+                if (maxVertex > 0 && base + vertexSpan > maxVertex) outOfRange++;
+                if (maxIndex > 0 && (elemOff / 4L) + count > maxIndex) outOfRange++;
+            }
+            sb.append(" draws=").append(batch.size).append(" outOfRange=").append(outOfRange);
+
+            if (batch.size > 0) {
+                int count0 = batch.elementCounts.get(0);
+                int base0 = batch.baseVertices.get(0);
+                long off0 = batch.elementOffsets.get(0);
+                sb.append(" draw0=(").append(count0).append(',').append(base0).append(',').append(off0).append(')');
+
+                int readOffset = base0 * CompactChunkVertex.STRIDE;
+                if (readOffset >= 0 && readOffset + 6 * CompactChunkVertex.STRIDE <= gSize) {
+                    ByteBuffer gbuf = BufferUtils.createByteBuffer(6 * CompactChunkVertex.STRIDE);
+                    readbackAt(GL15.GL_ARRAY_BUFFER, geometryBuffer.handle(), readOffset, gbuf);
+                    decodeAndProject(sb, gbuf, reg, mv, proj);
+                } else {
+                    sb.append(" GEOMREAD-OOB(").append(readOffset).append('/').append(gSize).append(')');
+                }
             }
 
-            int iSize = bufferSize(GL15.GL_ELEMENT_ARRAY_BUFFER, indexBuffer.handle());
-            sb.append(" idxBufSize=").append(iSize).append(" indices=").append(iSize / 4);
             if (iSize > 0) {
                 ByteBuffer ibuf = BufferUtils.createByteBuffer(Math.min(iSize, 12 * 4));
-                readback(GL15.GL_ELEMENT_ARRAY_BUFFER, indexBuffer.handle(), ibuf);
+                readbackAt(GL15.GL_ELEMENT_ARRAY_BUFFER, indexBuffer.handle(), 0, ibuf);
                 IntBuffer idx = ibuf.asIntBuffer();
                 sb.append(" idx[");
                 for (int i = 0; i < idx.remaining(); i++) {
@@ -375,27 +402,75 @@ public final class Diag {
                 }
                 sb.append(']');
             }
-
-            int maxVertex = gSize / CompactChunkVertex.STRIDE;
-            int maxIndex = iSize / 4;
-            int outOfRange = 0;
-            for (int i = 0; i < batch.size; i++) {
-                int count = batch.elementCounts.get(i);
-                int base = batch.baseVertices.get(i);
-                long elemOff = batch.elementOffsets.get(i);
-                if (maxVertex > 0 && base + count > maxVertex) outOfRange++;
-                if (maxIndex > 0 && (elemOff / 4L) + count > maxIndex) outOfRange++;
-            }
-            sb.append(" draws=").append(batch.size).append(" outOfRange=").append(outOfRange);
-            if (batch.size > 0) {
-                sb.append(" draw0=(").append(batch.elementCounts.get(0))
-                        .append(',').append(batch.baseVertices.get(0))
-                        .append(',').append(batch.elementOffsets.get(0)).append(')');
-            }
         } catch (Throwable t) {
             sb.append(" EX=").append(t);
         }
         System.out.println("[RadiumDiag] " + sb);
+    }
+
+    private static float[] uniformMat4(int program, String name) {
+        float[] out = new float[16];
+        int loc = org.lwjgl.opengl.GL20.glGetUniformLocation(program, name);
+        if (loc >= 0) {
+            FloatBuffer fb = BufferUtils.createFloatBuffer(16);
+            org.lwjgl.opengl.GL20.glGetUniform(program, loc, fb);
+            fb.rewind();
+            fb.get(out);
+        }
+        return out;
+    }
+
+    private static float[] uniformVec3(int program, String name) {
+        float[] out = new float[3];
+        int loc = org.lwjgl.opengl.GL20.glGetUniformLocation(program, name);
+        if (loc >= 0) {
+            FloatBuffer fb = BufferUtils.createFloatBuffer(3);
+            org.lwjgl.opengl.GL20.glGetUniform(program, loc, fb);
+            fb.rewind();
+            fb.get(out);
+        }
+        return out;
+    }
+
+    /** Decode vertices and project to NDC using the column-major shader matrices and the shader's _draw_id translation. */
+    private static void decodeAndProject(StringBuilder sb, ByteBuffer buf, float[] reg, float[] mv, float[] proj) {
+        int n = Math.min(4, buf.capacity() / CompactChunkVertex.STRIDE);
+        for (int i = 0; i < n; i++) {
+            int base = i * CompactChunkVertex.STRIDE;
+            int hi = buf.getInt(base);
+            int lo = buf.getInt(base + 4);
+            int argb = buf.getInt(base + 8);
+            int lightAndData = buf.getInt(base + 16);
+            int x = ((hi & 0x3FF) << 10) | (lo & 0x3FF);
+            int y = (((hi >>> 10) & 0x3FF) << 10) | ((lo >>> 10) & 0x3FF);
+            int z = (((hi >>> 20) & 0x3FF) << 10) | ((lo >>> 20) & 0x3FF);
+            float fx = (x / 1048576.0f) * 32.0f - 8.0f;
+            float fy = (y / 1048576.0f) * 32.0f - 8.0f;
+            float fz = (z / 1048576.0f) * 32.0f - 8.0f;
+
+            int drawId = (lightAndData >>> 24) & 0xFF;
+            int rx = (drawId >>> 5) & 7, ry = drawId & 3, rz = (drawId >>> 2) & 7;
+            float wx = reg[0] + rx * 16.0f + fx;
+            float wy = reg[1] + ry * 16.0f + fy;
+            float wz = reg[2] + rz * 16.0f + fz;
+            float vx = mv[0] * wx + mv[4] * wy + mv[8] * wz + mv[12];
+            float vy = mv[1] * wx + mv[5] * wy + mv[9] * wz + mv[13];
+            float vz = mv[2] * wx + mv[6] * wy + mv[10] * wz + mv[14];
+            float vw = mv[3] * wx + mv[7] * wy + mv[11] * wz + mv[15];
+            float cx = proj[0] * vx + proj[4] * vy + proj[8] * vz + proj[12] * vw;
+            float cy = proj[1] * vx + proj[5] * vy + proj[9] * vz + proj[13] * vw;
+            float cz = proj[2] * vx + proj[6] * vy + proj[10] * vz + proj[14] * vw;
+            float cw = proj[3] * vx + proj[7] * vy + proj[11] * vz + proj[15] * vw;
+            String ndc = "off";
+            if (cw != 0) {
+                float nx = cx / cw, ny = cy / cw, nz = cz / cw;
+                boolean in = Math.abs(nx) <= 1.0f && Math.abs(ny) <= 1.0f && nz > 0.0f && nz <= 1.0f;
+                ndc = String.format("(%.2f,%.2f,%.3f)%s", nx, ny, nz, in ? "IN" : "OUT");
+            } else {
+                ndc = "(cw=0)";
+            }
+            sb.append(String.format(" v%d=(%.2f,%.2f,%.2f)c=%08X sec=%d->%s", i, fx, fy, fz, argb, drawId, ndc));
+        }
     }
 
     private static int bufferSize(int target, int handle) {
@@ -405,27 +480,10 @@ public final class Diag {
         return size;
     }
 
-    private static void readback(int target, int handle, ByteBuffer out) {
+    private static void readbackAt(int target, int handle, long offset, ByteBuffer out) {
         GL15.glBindBuffer(target, handle);
-        GL15.glGetBufferSubData(target, 0L, out);
+        GL15.glGetBufferSubData(target, offset, out);
         GL15.glBindBuffer(target, 0);
-    }
-
-    private static void decodeVertices(StringBuilder sb, ByteBuffer buf) {
-        int n = Math.min(6, buf.capacity() / CompactChunkVertex.STRIDE);
-        for (int i = 0; i < n; i++) {
-            int base = i * CompactChunkVertex.STRIDE;
-            int hi = buf.getInt(base);
-            int lo = buf.getInt(base + 4);
-            int argb = buf.getInt(base + 8);
-            int x = ((hi & 0x3FF) << 10) | (lo & 0x3FF);
-            int y = (((hi >>> 10) & 0x3FF) << 10) | ((lo >>> 10) & 0x3FF);
-            int z = (((hi >>> 20) & 0x3FF) << 10) | ((lo >>> 20) & 0x3FF);
-            float fx = (x / 1048576.0f) * 32.0f - 8.0f;
-            float fy = (y / 1048576.0f) * 32.0f - 8.0f;
-            float fz = (z / 1048576.0f) * 32.0f - 8.0f;
-            sb.append(String.format(" g%d=(%.2f,%.2f,%.2f)c=%08X", i, fx, fy, fz, argb));
-        }
     }
 
     /** Boot-test overrides: force GL state that would otherwise hide geometry, keyed off -D system properties. */
