@@ -300,6 +300,9 @@ public class GLRenderDevice implements RenderDevice {
                         indexType.getFormatId(),
                         batch.elementOffsets.get(i),
                         batch.baseVertices.get(i));
+
+                gg.sona.radium.diag.Diag.drawError("chunkDraw", "draw#" + i + " (count=" + batch.elementCounts.get(i)
+                        + " base=" + batch.baseVertices.get(i) + " off=" + batch.elementOffsets.get(i) + ")");
             }
         }
 

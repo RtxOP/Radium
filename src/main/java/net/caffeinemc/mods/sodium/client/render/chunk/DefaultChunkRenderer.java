@@ -95,8 +95,20 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
             }
 
             setModelMatrixUniforms(shader, region, camera, region.getResources().prepareChunkData(commandList));
-            executeDrawBatch(commandList, tessellation, batch);
 
+            boolean noCull = System.getProperty("radium.noCull") != null;
+            boolean noDepth = System.getProperty("radium.noDepth") != null;
+            boolean noBlend = System.getProperty("radium.noBlend") != null;
+            if (noCull || noDepth || noBlend) {
+                gg.sona.radium.diag.Diag.overrideState(noCull, noDepth, noBlend);
+            }
+            executeDrawBatch(commandList, tessellation, batch);
+            if (noCull || noDepth || noBlend) {
+                gg.sona.radium.diag.Diag.restoreState(noCull, noDepth, noBlend);
+            }
+
+            gg.sona.radium.diag.Diag.drawProbe(resources.getGeometryBuffer(),
+                    useIndexedTessellation ? resources.getIndexBuffer() : this.sharedIndexBuffer.getBufferObject(), batch);
             gg.sona.radium.diag.Diag.count("drawBatch", "drawBatch pass=" + renderPass
                     + " region=(" + region.getChunkX() + "," + region.getChunkY() + "," + region.getChunkZ() + ")"
                     + " draws=" + batch.size + " idxBytes=" + batch.getIndexBufferSize());

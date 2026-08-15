@@ -1,7 +1,11 @@
 package gg.sona.radium.diag;
 
+import net.caffeinemc.mods.sodium.client.gl.buffer.GlBuffer;
+import net.caffeinemc.mods.sodium.client.gl.device.MultiDrawBatch;
+import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.impl.CompactChunkVertex;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL15;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -266,14 +270,19 @@ public final class Diag {
 
         StringBuilder sb = new StringBuilder();
         sb.append("pixels center=(").append(cx).append(',').append(cy).append(')');
-        int[] dx = { 0, -vw / 4, vw / 4, 0, 0 };
-        int[] dy = { 0, 0, 0, -vh / 4, vh / 4 };
+        int[] dx = { 0, -vw / 4, vw / 4, 0, 0, 0, vw / 6, -vw / 6 };
+        int[] dy = { 0, 0, 0, -vh / 4, vh / 4, (int) (vh * 0.90), (int) (vh * 0.85), (int) (vh * 0.85) };
         ByteBuffer px = BufferUtils.createByteBuffer(4);
+        FloatBuffer dz = BufferUtils.createFloatBuffer(1);
         for (int i = 0; i < dx.length; i++) {
+            int px0 = cx + dx[i], py0 = cy + dy[i];
             px.clear();
-            GL11.glReadPixels(cx + dx[i], cy + dy[i], 1, 1, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, px);
+            GL11.glReadPixels(px0, py0, 1, 1, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, px);
             int r = px.get(0) & 0xFF, g = px.get(1) & 0xFF, b = px.get(2) & 0xFF, a = px.get(3) & 0xFF;
-            sb.append(String.format(" [%d,%d,%d,%d]", r, g, b, a));
+            dz.clear();
+            GL11.glReadPixels(px0, py0, 1, 1, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, dz);
+            float z = dz.get(0);
+            sb.append(String.format(" [%d,%d,%d,%d z=%.3f]", r, g, b, a, z));
         }
         System.out.println("[RadiumDiag] " + sb);
     }
@@ -311,5 +320,138 @@ public final class Diag {
             sb.append(String.format(" v%d=(%.2f,%.2f,%.2f) c=%08X t=%08X l=%08X", i, fx, fy, fz, argb, tex, light));
         }
         System.out.println("[RadiumDiag] " + sb);
+    }
+
+    /**
+     * Always-on GL error check for the boot-test (not gated by GL_PROBE_ENABLED). Logs the first error per
+     * key once, then drains any further pending errors so later probes start clean.
+     */
+    public static void drawError(String key, String detail) {
+        int err = GL11.glGetError();
+        if (err != GL11.GL_NO_ERROR && reportedErrors.add(key)) {
+            System.out.println("[RadiumDiag] GL ERROR after " + detail + ": " + err + " (0x" + Integer.toHexString(err) + ")");
+        }
+        while (GL11.glGetError() != GL11.GL_NO_ERROR) {
+            // drain
+        }
+    }
+
+    /**
+     * Boot-test probe: read back the GPU geometry and index buffers, decode the first vertices, and validate the
+     * draw-command parameters against the buffer sizes. Run right after executeDrawBatch.
+     *
+     * <p>If the GPU geometry buffer matches the CPU mesh (see meshDump) and the shared index buffer holds the
+     * repeating quad pattern but the framebuffer still shows only the clear colour, the failure is in GL state or
+     * rasterisation; if the readback differs from the CPU mesh (or is all zeros), the upload/index path is broken.</p>
+     */
+    public static void drawProbe(GlBuffer geometryBuffer, GlBuffer indexBuffer, MultiDrawBatch batch) {
+        long now = System.currentTimeMillis();
+        Long prev = lastLogAt.get("drawProbe");
+        if (prev != null && now - prev < 1000L) {
+            return;
+        }
+        lastLogAt.put("drawProbe", now);
+
+        StringBuilder sb = new StringBuilder("drawProbe");
+        try {
+            int gSize = bufferSize(GL15.GL_ARRAY_BUFFER, geometryBuffer.handle());
+            sb.append(" geomSize=").append(gSize).append(" verts=").append(gSize / CompactChunkVertex.STRIDE);
+            if (gSize > 0) {
+                ByteBuffer gbuf = BufferUtils.createByteBuffer(Math.min(gSize, 6 * CompactChunkVertex.STRIDE));
+                readback(GL15.GL_ARRAY_BUFFER, geometryBuffer.handle(), gbuf);
+                decodeVertices(sb, gbuf);
+            }
+
+            int iSize = bufferSize(GL15.GL_ELEMENT_ARRAY_BUFFER, indexBuffer.handle());
+            sb.append(" idxBufSize=").append(iSize).append(" indices=").append(iSize / 4);
+            if (iSize > 0) {
+                ByteBuffer ibuf = BufferUtils.createByteBuffer(Math.min(iSize, 12 * 4));
+                readback(GL15.GL_ELEMENT_ARRAY_BUFFER, indexBuffer.handle(), ibuf);
+                IntBuffer idx = ibuf.asIntBuffer();
+                sb.append(" idx[");
+                for (int i = 0; i < idx.remaining(); i++) {
+                    if (i > 0) sb.append(',');
+                    sb.append(idx.get(i));
+                }
+                sb.append(']');
+            }
+
+            int maxVertex = gSize / CompactChunkVertex.STRIDE;
+            int maxIndex = iSize / 4;
+            int outOfRange = 0;
+            for (int i = 0; i < batch.size; i++) {
+                int count = batch.elementCounts.get(i);
+                int base = batch.baseVertices.get(i);
+                long elemOff = batch.elementOffsets.get(i);
+                if (maxVertex > 0 && base + count > maxVertex) outOfRange++;
+                if (maxIndex > 0 && (elemOff / 4L) + count > maxIndex) outOfRange++;
+            }
+            sb.append(" draws=").append(batch.size).append(" outOfRange=").append(outOfRange);
+            if (batch.size > 0) {
+                sb.append(" draw0=(").append(batch.elementCounts.get(0))
+                        .append(',').append(batch.baseVertices.get(0))
+                        .append(',').append(batch.elementOffsets.get(0)).append(')');
+            }
+        } catch (Throwable t) {
+            sb.append(" EX=").append(t);
+        }
+        System.out.println("[RadiumDiag] " + sb);
+    }
+
+    private static int bufferSize(int target, int handle) {
+        GL15.glBindBuffer(target, handle);
+        IntBuffer sz = BufferUtils.createIntBuffer(16);
+        GL15.glGetBufferParameteriv(target, GL15.GL_BUFFER_SIZE, sz);
+        int size = sz.get(0);
+        GL15.glBindBuffer(target, 0);
+        return size;
+    }
+
+    private static void readback(int target, int handle, ByteBuffer out) {
+        GL15.glBindBuffer(target, handle);
+        GL15.glGetBufferSubData(target, 0L, out);
+        GL15.glBindBuffer(target, 0);
+    }
+
+    private static void decodeVertices(StringBuilder sb, ByteBuffer buf) {
+        int n = Math.min(6, buf.capacity() / CompactChunkVertex.STRIDE);
+        for (int i = 0; i < n; i++) {
+            int base = i * CompactChunkVertex.STRIDE;
+            int hi = buf.getInt(base);
+            int lo = buf.getInt(base + 4);
+            int argb = buf.getInt(base + 8);
+            int x = ((hi & 0x3FF) << 10) | (lo & 0x3FF);
+            int y = (((hi >>> 10) & 0x3FF) << 10) | ((lo >>> 10) & 0x3FF);
+            int z = (((hi >>> 20) & 0x3FF) << 10) | ((lo >>> 20) & 0x3FF);
+            float fx = (x / 1048576.0f) * 32.0f - 8.0f;
+            float fy = (y / 1048576.0f) * 32.0f - 8.0f;
+            float fz = (z / 1048576.0f) * 32.0f - 8.0f;
+            sb.append(String.format(" g%d=(%.2f,%.2f,%.2f)c=%08X", i, fx, fy, fz, argb));
+        }
+    }
+
+    /** Boot-test overrides: force GL state that would otherwise hide geometry, keyed off -D system properties. */
+    public static void overrideState(boolean noCull, boolean noDepth, boolean noBlend) {
+        if (noCull && GL11.glIsEnabled(GL11.GL_CULL_FACE)) {
+            GL11.glDisable(GL11.GL_CULL_FACE);
+        }
+        if (noDepth && GL11.glIsEnabled(GL11.GL_DEPTH_TEST)) {
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
+        }
+        if (noBlend && GL11.glIsEnabled(GL11.GL_BLEND)) {
+            GL11.glDisable(GL11.GL_BLEND);
+        }
+    }
+
+    public static void restoreState(boolean noCull, boolean noDepth, boolean noBlend) {
+        if (noCull) {
+            GL11.glEnable(GL11.GL_CULL_FACE);
+        }
+        if (noDepth) {
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+        }
+        if (noBlend) {
+            GL11.glEnable(GL11.GL_BLEND);
+        }
     }
 }
