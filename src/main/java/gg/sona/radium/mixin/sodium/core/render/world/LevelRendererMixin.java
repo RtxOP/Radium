@@ -152,10 +152,13 @@ public abstract class LevelRendererMixin implements LevelRendererExtension {
         // class; vanilla configures the fixed-function GL matrices in EntityRenderer.setupCameraTransform() before
         // setupTerrain runs, so read them back (translation zeroed, matching captureGlMatrices). Vanilla's own
         // ClippingHelper notch-extracts planes from the transposed matrix product (M*P), yielding a degenerate
-        // frustum; building the FrustumIntersection from the combined P*M matrix (the exact clip transform the
-        // block shader applies) produces the correct one.
+        // frustum. joml's Matrix4f(FloatBuffer) reads the GL column-major data in row-major naming order, so the
+        // read-back projection/model-view are TRANSPOSES of the GL matrices; the shader upload (row-major get() +
+        // transpose=false) transposes them back, so rendering is unaffected. For FrustumIntersection to extract the
+        // planes of the true clip transform P*M (as the block shader applies it), it must be given the transpose of
+        // that product -- i.e. modelView.mul(projection) on these read-back matrices.
         ChunkRenderMatrices matrices = SodiumWorldRenderer.captureGlMatrices();
-        Matrix4f combined = new Matrix4f(matrices.projection).mul(matrices.modelView);
+        Matrix4f combined = new Matrix4f(matrices.modelView).mul(matrices.projection);
         SimpleFrustum frustum = new SimpleFrustum(new FrustumIntersection(combined, false));
         Vec3 transform = entity.getPositionEyes((float) tickDelta);
         Viewport viewport = new Viewport(frustum, transform);

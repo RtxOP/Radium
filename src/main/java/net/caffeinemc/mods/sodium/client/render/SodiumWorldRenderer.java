@@ -121,7 +121,10 @@ public class SodiumWorldRenderer {
     private static Matrix4f readGlMatrix(int matrixMode) {
         FloatBuffer buffer = BufferUtils.createFloatBuffer(16);
         GL11.glGetFloat(matrixMode, buffer);
-        // joml's FloatBuffer constructor reads components in column-major order, matching OpenGL.
+        // Note: joml's FloatBuffer constructor reads the buffer in row-major naming order (buffer[0]->m00,
+        // buffer[1]->m01, ...), so GL's column-major matrix lands TRANSPOSED here. This is fine: the shader upload
+        // (GlUniformMatrix4f: get(buffer) + glUniformMatrix4(transpose=false)) transposes it back, so GLSL sees the
+        // true GL matrices. Callers that combine these matrices must account for the transposition.
         return new Matrix4f(buffer);
     }
 
