@@ -179,7 +179,12 @@ task shrinkFastutil(type: JavaExec) {
             "-libraryjars ${System.getProperty('java.home')}/lib/rt.jar",
             '-dontoptimize',
             '-dontobfuscate',
-            '-dontpreverify',
+            // Preverify stays ENABLED: shrinking removes members, and 6.2.2's
+            // preverification is what rewrites the Java 8 StackMapTable. With
+            // -dontpreverify the stale frames crash verification at runtime
+            // (VerifyError: "Expecting a stackmap frame", e.g. Long2IntFunction
+            // during ChunkTracker.<init>). rt.jar on -libraryjars satisfies the
+            // preverifier's partial evaluation (without it, preverify fails).
             '-dontnote',
             '-dontwarn',
             '-ignorewarnings',
