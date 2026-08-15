@@ -145,63 +145,37 @@ processResources {
     rename '(.+_at\\.cfg)', 'META-INF/$1'
 }
 
-// fastutil keep-roots for the ProGuard shrink: the exact types the port
-// references in source (extracted from src/main/java imports + inline refs).
-def fastutilKeepClasses = [
-    'it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap',
-    'it.unimi.dsi.fastutil.objects.Object2ReferenceMap',
-    'it.unimi.dsi.fastutil.objects.Object2ReferenceOpenHashMap',
-    'it.unimi.dsi.fastutil.objects.ObjectArrayList',
-    'it.unimi.dsi.fastutil.objects.ObjectOpenHashSet',
-    'it.unimi.dsi.fastutil.objects.Reference2ReferenceMap',
-    'it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap',
-    'it.unimi.dsi.fastutil.objects.ReferenceArrayList',
-    'it.unimi.dsi.fastutil.objects.ReferenceArraySet',
-    'it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet',
-    'it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet',
-    'it.unimi.dsi.fastutil.objects.ReferenceSet',
-    'it.unimi.dsi.fastutil.objects.ReferenceSets',
-    'it.unimi.dsi.fastutil.longs.Long2IntLinkedOpenHashMap',
-    'it.unimi.dsi.fastutil.longs.Long2ReferenceLinkedOpenHashMap',
-    'it.unimi.dsi.fastutil.longs.Long2ReferenceMap',
-    'it.unimi.dsi.fastutil.longs.Long2ReferenceMaps',
-    'it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap',
-    'it.unimi.dsi.fastutil.longs.LongArrayList',
-    'it.unimi.dsi.fastutil.longs.LongCollection',
-    'it.unimi.dsi.fastutil.longs.LongHeapPriorityQueue',
-    'it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap',
-    'it.unimi.dsi.fastutil.ints.Int2ReferenceMap',
-    'it.unimi.dsi.fastutil.ints.Int2ReferenceOpenHashMap',
-    'it.unimi.dsi.fastutil.ints.IntArrayList',
-    'it.unimi.dsi.fastutil.ints.IntArrays',
-    'it.unimi.dsi.fastutil.ints.IntConsumer',
-    'it.unimi.dsi.fastutil.ints.IntOpenHashSet',
-    'it.unimi.dsi.fastutil.doubles.Double2ObjectMap',
-    'it.unimi.dsi.fastutil.doubles.Double2ObjectRBTreeMap',
-    'it.unimi.dsi.fastutil.doubles.Double2ObjectSortedMap',
-    'it.unimi.dsi.fastutil.floats.FloatArrays',
-    'it.unimi.dsi.fastutil.floats.FloatIterator',
-    'it.unimi.dsi.fastutil.floats.FloatOpenHashSet'
-]
-
 // Shrinks fastutil 8.5.13 (23.6 MB, ~12 800 classes) down to the closure the
-// port actually reaches from the keep classes above (~1.6 MB, ~1 300 classes
-// verified locally). ProGuard 6.2.2 runs on the Java 8 build JVM and reads
-// the Java 8 rt.jar library; shadowJar merges this output instead of the
-// full jar. No obfuscation or optimization — shrink only.
+// port actually reaches (~1.7 MB, ~1 270 classes, verified on JDK 8 with
+// ProGuard 6.2.2). The mod's own compiled classes are fed in as -injars and
+// kept wholesale, so ProGuard derives the fastutil closure from the real
+// bytecode references — no hand-maintained keep-root list. This is what makes
+// the shrink robust to wildcard imports (e.g. it.unimi.dsi.fastutil.longs.*
+// in ChunkTracker): a missing root previously silently dropped the class and
+// crashed world load with NoClassDefFoundError. ProGuard 6.2.2 runs on the
+// Java 8 build JVM and reads the Java 8 rt.jar library; the second outjar is
+// just the kept mod classes passing through, which shadowJar ignores because
+// it packages build/classes/main itself. Shrink only — no optimization,
+// no obfuscation.
 task shrinkFastutil(type: JavaExec) {
     def fastutilJar = configurations.compile.find { it.name.startsWith('fastutil-') }
+    def classesDir  = sourceSets.main.output.classesDir
     def outJar      = file("${buildDir}/fastutil-min.jar")
+    def restJar     = file("${buildDir}/fastutil-rest.jar")
     def cfgFile     = file("${buildDir}/fastutil.pro")
 
+    dependsOn compileJava
     inputs.file(fastutilJar)
+    inputs.dir(classesDir)
     outputs.file(outJar)
 
     doFirst {
         cfgFile.parentFile.mkdirs()
         cfgFile.text = [
+            "-injars ${classesDir}",
             "-injars ${fastutilJar}",
-            "-outjars ${outJar}",
+            "-outjars ${outJar}(it/unimi/dsi/fastutil/**)",
+            "-outjars ${restJar}(!it/unimi/dsi/fastutil/**)",
             "-libraryjars ${System.getProperty('java.home')}/lib/rt.jar",
             '-dontoptimize',
             '-dontobfuscate',
@@ -210,8 +184,8 @@ task shrinkFastutil(type: JavaExec) {
             '-dontwarn',
             '-ignorewarnings',
             '-keepattributes Signature,Exceptions,InnerClasses,EnclosingMethod,Deprecated,*Annotation*',
-            fastutilKeepClasses.collect { "-keep class ${it} { *; }" }
-        ].flatten().join('\n')
+            '-keep class !it.unimi.dsi.fastutil.** { *; }'
+        ].join('\n')
     }
 
     classpath = configurations.proguard

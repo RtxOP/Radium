@@ -178,12 +178,12 @@ Mechanics (source-verified against FML source, branch `1.8`, and the mixin-0.7.1
 ### 5.3 Bundling fastutil without the 23.6 MB jar
 fastutil 8.5.13 is a real runtime dependency of the port (`Reference2ReferenceOpenHashMap`, `Long2ReferenceLinkedOpenHashMap`, BSP-tree `Double2ObjectRBTreeMap`s, translucent-sort `FloatArrays`/`IntArrays`, …) and is **not** on the 1.8.9 runtime classpath, so it must be bundled. Shading the whole artifact adds ~23.6 MB (~12 800 classes) to the JAR.
 
-The `shrinkFastutil` task runs **ProGuard 6.2.2** (shrink-only: `-dontoptimize -dontobfuscate -dontpreverify`) over the fastutil jar with the ~34 port-referenced types as `-keep` roots (`fastutilKeepClasses` in `build.gradle`). ProGuard keeps exactly the transitive closure — measured **~1284 classes / 1.6 MB** — and `shadowJar { from shrinkFastutil }` merges that instead of the full jar. The final `radium-0.8.15.jar` lands ≈3 MB (reference mod: ~2 MB).
+The `shrinkFastutil` task runs **ProGuard 6.2.2** (shrink-only: `-dontoptimize -dontobfuscate -dontpreverify`) over the fastutil jar **and the mod's own compiled classes** (`build/classes/main` as a second `-injars`). The mod's classes are kept wholesale (`-keep class !it.unimi.dsi.fastutil.** { *; }`), so ProGuard derives the fastutil closure from the real bytecode references — there is **no hand-maintained keep-root list**. Measured **~1270 classes / 1.7 MB** (verified on JDK 8 with the exact 6.2.2 + rt.jar config). `shadowJar { from shrinkFastutil }` merges the fastutil-only outjar; the second outjar (`fastutil-rest.jar`) holds the mod's kept classes passing through and is discarded, since shadowJar packages `build/classes/main` itself. The final `radium-0.8.15.jar` lands ≈4 MB (reference mod: ~2 MB).
 
 Notes:
 - ProGuard 6.2.2 runs on the Java 8 build JVM and reads `<java.home>/lib/rt.jar` as `-libraryjars` (JDK 8 bytecode, class-file major 52). `-dontpreverify` is required — ProGuard's preverifier does a partial evaluation that needs the library's full supertype graph.
-- `-dontwarn`/`-ignorewarnings` absorb missing-library warnings; fastutil only references `java.*`.
-- When the port gains new fastutil usages, add the referenced types to `fastutilKeepClasses` — a missing root silently drops the class from the JAR (NoClassDefFoundError at runtime).
+- `-dontwarn`/`-ignorewarnings` absorb warnings for missing library classes (net.minecraft, mixin, joml); only the closure computation over fastutil is affected, and it resolves entirely within the two `-injars`.
+- **No maintenance rule needed**: any new fastutil usage — including wildcard imports like `it.unimi.dsi.fastutil.longs.*` in `ChunkTracker` — is captured automatically from the compiled bytecode. (The previous keep-root list missed `Long2IntOpenHashMap` used via a wildcard import, silently dropping it and crashing world load with `NoClassDefFoundError` at `ChunkTracker.<init>`. The bytecode-derived closure fixes that class of bug permanently.)
 
 ---
 
