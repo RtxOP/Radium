@@ -153,7 +153,7 @@ Instead of submitting all sub-chunk draw commands in a single hardware batch, th
 - **JDK:** OpenJDK 8 (e.g. Temurin 8).
 
 ### 5.2 Single-JAR Deployment (TweakClass Cascade)
-The project produces **one** JAR, `radium-0.8.15.jar` (shaded: mixin 0.7.11-SNAPSHOT, joml, fastutil), placed in `.minecraft/mods/`. Its manifest boots mixin through the tweak cascade:
+The project produces **one** JAR, `radium-0.8.15.jar` (shaded: mixin 0.7.11-SNAPSHOT, joml, and a **ProGuard-shrunk** fastutil — see 5.3), placed in `.minecraft/mods/`. Its manifest boots mixin through the tweak cascade:
 
 ```groovy
 jar {
@@ -174,6 +174,16 @@ Mechanics (source-verified against FML source, branch `1.8`, and the mixin-0.7.1
 **Why not relocate `org.spongepowered.asm` instead:** `MixinService.initService()` matches the ServiceLoader-discovered service class name against `IMixinServiceBootstrap.getServiceClassName()` — a **string constant** the relocator never rewrites. Relocated, the check fails and mixin dies with "No mixin host service is available" (verified in 0.7.11 bytecode).
 
 **Why not a two-jar split:** unnecessary — the cascade above gives a working single jar. (Historically `mixinBridgeJar` existed; removed.)
+
+### 5.3 Bundling fastutil without the 23.6 MB jar
+fastutil 8.5.13 is a real runtime dependency of the port (`Reference2ReferenceOpenHashMap`, `Long2ReferenceLinkedOpenHashMap`, BSP-tree `Double2ObjectRBTreeMap`s, translucent-sort `FloatArrays`/`IntArrays`, …) and is **not** on the 1.8.9 runtime classpath, so it must be bundled. Shading the whole artifact adds ~23.6 MB (~12 800 classes) to the JAR.
+
+The `shrinkFastutil` task runs **ProGuard 6.2.2** (shrink-only: `-dontoptimize -dontobfuscate -dontpreverify`) over the fastutil jar with the ~34 port-referenced types as `-keep` roots (`fastutilKeepClasses` in `build.gradle`). ProGuard keeps exactly the transitive closure — measured **~1284 classes / 1.6 MB** — and `shadowJar { from shrinkFastutil }` merges that instead of the full jar. The final `radium-0.8.15.jar` lands ≈3 MB (reference mod: ~2 MB).
+
+Notes:
+- ProGuard 6.2.2 runs on the Java 8 build JVM and reads `<java.home>/lib/rt.jar` as `-libraryjars` (JDK 8 bytecode, class-file major 52). `-dontpreverify` is required — ProGuard's preverifier does a partial evaluation that needs the library's full supertype graph.
+- `-dontwarn`/`-ignorewarnings` absorb missing-library warnings; fastutil only references `java.*`.
+- When the port gains new fastutil usages, add the referenced types to `fastutilKeepClasses` — a missing root silently drops the class from the JAR (NoClassDefFoundError at runtime).
 
 ---
 
