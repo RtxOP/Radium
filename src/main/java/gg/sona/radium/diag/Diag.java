@@ -50,8 +50,18 @@ public final class Diag {
         }
     }
 
-    /** Drains glGetError and logs the first error per stage-key once. Returns true if any error was pending. */
+    /**
+     * Drains glGetError and logs the first error per stage-key once. Returns true if any error was pending.
+     *
+     * <p>Gated off by default: glGetError forces a full GPU pipeline flush on Mesa/Intel drivers and is
+     * called multiple times per frame (once per render pass + per setup phase). Even with no errors pending
+     * that sync cost was a large share of the frame budget. Flip GL_PROBE_ENABLED to true to re-enable.</p>
+     */
     public static boolean glProbe(String stageKey) {
+        if (!GL_PROBE_ENABLED) {
+            return false;
+        }
+
         int err = GL11.glGetError();
         if (err == GL11.GL_NO_ERROR) {
             return false;
@@ -65,6 +75,8 @@ public final class Diag {
         }
         return true;
     }
+
+    private static final boolean GL_PROBE_ENABLED = false;
 
     // ==========================================================================================
     // D4 probe batch: draw-time GL state, shader uniform readback, full-frame timing.
