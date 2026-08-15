@@ -400,9 +400,7 @@ public final class Diag {
 
     private static int bufferSize(int target, int handle) {
         GL15.glBindBuffer(target, handle);
-        IntBuffer sz = BufferUtils.createIntBuffer(16);
-        GL15.glGetBufferParameteriv(target, GL15.GL_BUFFER_SIZE, sz);
-        int size = sz.get(0);
+        int size = GL15.glGetBufferParameteri(target, GL15.GL_BUFFER_SIZE);
         GL15.glBindBuffer(target, 0);
         return size;
     }
