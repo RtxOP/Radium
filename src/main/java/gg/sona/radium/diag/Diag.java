@@ -359,7 +359,7 @@ public final class Diag {
             int maxIndex = iSize / 4;
             sb.append(" geomSize=").append(gSize).append(" idxBufSize=").append(iSize);
 
-            int program = org.lwjgl.opengl.GL20.glGetInteger(org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM);
+            int program = GL11.glGetInteger(org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM);
             float[] proj = uniformMat4(program, "u_ProjectionMatrix");
             float[] mv = uniformMat4(program, "u_ModelViewMatrix");
             float[] reg = uniformVec3(program, "u_RegionOffset");
