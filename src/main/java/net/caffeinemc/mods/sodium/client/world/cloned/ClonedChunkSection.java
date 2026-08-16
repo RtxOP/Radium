@@ -47,7 +47,10 @@ public class ClonedChunkSection {
                     blockData = new IBlockState[blockStates.length];
 
                     for (int i = 0; i < blockStates.length; i++) {
-                        IBlockState state = Block.getStateById(blockStates[i] & 0xFFFF);
+                    // MCP 1.8.9 divergence: Block.getStateById(int) decodes BLOCK_ID<<12|META, but
+                    // ExtendedBlockStorage.getData() stores FLAT state-ids from the Block.BLOCK_STATE_IDS
+                    // registry (same as the reference's Block.BLOCK_STATES.fromId). Use the registry lookup.
+                    IBlockState state = (IBlockState) Block.BLOCK_STATE_IDS.getByValue(blockStates[i] & 0xFFFF);
                         blockData[i] = state == null ? EMPTY_BLOCK_STATE : state;
                     }
                 }
