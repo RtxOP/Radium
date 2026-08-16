@@ -293,7 +293,8 @@ public final class Diag {
      * section) and colours are non-black, the mesh content is correct and any invisibility is downstream (texture,
      * lightmap, GL state).
      */
-    public static void meshDump(ByteBuffer buf, int stride, int vertexTotal) {
+    public static void meshDump(ByteBuffer buf, int stride, int vertexTotal,
+                                net.caffeinemc.mods.sodium.client.render.chunk.compile.buffers.BakedChunkModelBuilder builder) {
         long now = System.currentTimeMillis();
         Long prev = lastLogAt.get("meshDump");
         if (prev != null && now - prev < 1000L) {
@@ -303,6 +304,12 @@ public final class Diag {
 
         StringBuilder sb = new StringBuilder();
         sb.append("mesh verts=").append(vertexTotal);
+        for (net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing facing : net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing.VALUES) {
+            int c = builder.getVertexBuffer(facing).count();
+            if (c != 0) {
+                sb.append(" ").append(facing.name()).append("=").append(c);
+            }
+        }
         int n = Math.min(vertexTotal, 6);
         for (int i = 0; i < n; i++) {
             int base = i * stride;
@@ -620,6 +627,43 @@ public final class Diag {
         while (GL11.glGetError() != GL11.GL_NO_ERROR) {
             // drain
         }
+    }
+
+    /**
+     * Log the first suspicious (non-air, non-grass, non-dirt) block encountered while meshing a section,
+     * with its world position. Tells us whether the slice is handing the meshing task phantom block states.
+     */
+    public static void meshBlockProbe(net.caffeinemc.mods.sodium.client.render.chunk.RenderSection section,
+                                      net.minecraft.block.Block block, int x, int y, int z) {
+        if (block == net.minecraft.init.Blocks.air || block == net.minecraft.init.Blocks.grass
+                || block == net.minecraft.init.Blocks.dirt || block == net.minecraft.init.Blocks.bedrock) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Long prev = lastLogAt.get("meshBlockProbe");
+        if (prev != null && now - prev < 2000L) {
+            return;
+        }
+        lastLogAt.put("meshBlockProbe", now);
+        System.out.println("[RadiumDiag] meshBlockProbe sec=(" + section.getChunkX() + "," + section.getChunkY() + "," + section.getChunkZ()
+                + ") block=" + net.minecraft.block.Block.blockRegistry.getNameForObject(block)
+                + " (" + net.minecraft.block.Block.getIdFromBlock(block) + ") at (" + x + "," + y + "," + z + ")");
+    }
+
+    /**
+     * Log the first sprite (texture) of a freshly-built section mesh (1/sec). If the sprite name is the correct
+     * block's texture, the model/UV path is fine; a wrong sprite means the baked model is returning wrong quads.
+     */
+    public static void spriteProbe(net.minecraft.util.EnumFacing cullFace, net.minecraft.util.EnumFacing lightFace,
+                                   net.minecraft.client.renderer.texture.TextureAtlasSprite sprite) {
+        long now = System.currentTimeMillis();
+        Long prev = lastLogAt.get("spriteProbe");
+        if (prev != null && now - prev < 1000L) {
+            return;
+        }
+        lastLogAt.put("spriteProbe", now);
+        System.out.println("[RadiumDiag] spriteProbe cull=" + cullFace + " light=" + lightFace
+                + " sprite=" + sprite.getIconName());
     }
 
     private static int bufferSize(int target, int handle) {

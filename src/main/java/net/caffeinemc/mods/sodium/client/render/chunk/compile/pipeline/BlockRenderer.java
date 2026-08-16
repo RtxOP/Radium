@@ -124,6 +124,7 @@ public class BlockRenderer {
             TextureAtlasSprite sprite = quad.getSprite();
 
             if (sprite != null) {
+                gg.sona.radium.diag.Diag.spriteProbe(cullFace, quad.getLightFace(), sprite);
                 builder.addTextureAtlasSprite(sprite);
             }
         }

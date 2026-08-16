@@ -105,6 +105,8 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                         blockPos.set(x, y, z);
                         IBlockState blockState = slice.getBlockState(blockPos);
                         Block block = blockState.getBlock();
+
+                        gg.sona.radium.diag.Diag.meshBlockProbe(this.section, block, x, y, z);
                         // MCP 1.8.9: legacy-yarn Block#getBlockType() maps to MCP Block#getRenderType(); both
 // return the same render-type ints (3 = standard model, 2 = TESR, 1 = liquid, -1 = none).
 int blockType = block.getRenderType();

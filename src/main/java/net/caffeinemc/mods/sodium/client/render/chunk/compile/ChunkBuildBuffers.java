@@ -135,7 +135,7 @@ public class ChunkBuildBuffers {
             }
         }
 
-        gg.sona.radium.diag.Diag.meshDump(mergedBuffer.getDirectBuffer(), this.vertexType.getVertexFormat().getStride(), vertexTotal);
+        gg.sona.radium.diag.Diag.meshDump(mergedBuffer.getDirectBuffer(), this.vertexType.getVertexFormat().getStride(), vertexTotal, builder);
 
         return new BuiltSectionMeshParts(mergedBuffer, vertexSegments);
     }
