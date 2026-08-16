@@ -547,6 +547,81 @@ public final class Diag {
         }
     }
 
+    /** Decode the first vertex of the bytes entering the staging buffer (proves the mesh data reaches the upload). */
+    public static void stagingWrite(String key, ByteBuffer data, int readOffset, int length, GlBuffer dst, long writeOffset) {
+        long now = System.currentTimeMillis();
+        Long prev = lastLogAt.get(key);
+        if (prev != null && now - prev < 1000L) {
+            return;
+        }
+        lastLogAt.put(key, now);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("stagingWrite readOff=").append(readOffset).append(" len=").append(length)
+                .append(" dstOff=").append(writeOffset);
+        if (data.remaining() >= 20) {
+            int p = data.position();
+            int hi = data.getInt(p);
+            int lo = data.getInt(p + 4);
+            int argb = data.getInt(p + 8);
+            int tex = data.getInt(p + 12);
+            int light = data.getInt(p + 16);
+            int x = ((hi & 0x3FF) << 10) | (lo & 0x3FF);
+            int y = (((hi >>> 10) & 0x3FF) << 10) | ((lo >>> 10) & 0x3FF);
+            int z = (((hi >>> 20) & 0x3FF) << 10) | ((lo >>> 20) & 0x3FF);
+            sb.append(String.format(" v0=(%.2f,%.2f,%.2f) c=%08X t=%08X l=%08X",
+                    (x / 1048576.0f) * 32.0f - 8.0f,
+                    (y / 1048576.0f) * 32.0f - 8.0f,
+                    (z / 1048576.0f) * 32.0f - 8.0f, argb, tex, light));
+        } else {
+            sb.append(" shortData=").append(data.remaining());
+        }
+        System.out.println("[RadiumDiag] " + sb);
+    }
+
+    /** After the staging->arena copies, read back the staging buffer and check the data actually arrived there. */
+    public static void stagingFlush(String key, GlBuffer staging, int start, int pos, int bytesCopied) {
+        long now = System.currentTimeMillis();
+        Long prev = lastLogAt.get(key);
+        if (prev != null && now - prev < 1000L) {
+            return;
+        }
+        lastLogAt.put(key, now);
+
+        try {
+            int len = Math.min(pos, 40960);
+            ByteBuffer buf = BufferUtils.createByteBuffer(len);
+            readbackAt(GL15.GL_ARRAY_BUFFER, staging.handle(), 0L, buf);
+            int nonZeroWords = 0;
+            int firstNonZero = -1;
+            buf.rewind();
+            for (int i = 0; i + 4 <= len; i += 4) {
+                if (buf.getInt(i) != 0) {
+                    nonZeroWords++;
+                    if (firstNonZero < 0) {
+                        firstNonZero = i;
+                    }
+                }
+            }
+            System.out.println("[RadiumDiag] stagingFlush start=" + start + " pos=" + pos
+                    + " copiedBytes=" + bytesCopied + " readback[0," + len + ") nonZeroWords=" + nonZeroWords
+                    + " firstNonZeroByte=" + firstNonZero);
+        } catch (Throwable t) {
+            System.out.println("[RadiumDiag] stagingFlush EX=" + t);
+        }
+    }
+
+    /** Drain and log the first GL error for a stage (does not affect normal state). */
+    public static void glErr(String stage) {
+        int err = GL11.glGetError();
+        if (err != GL11.GL_NO_ERROR && reportedErrors.add(stage)) {
+            System.out.println("[RadiumDiag] GL ERROR at " + stage + ": " + err + " (0x" + Integer.toHexString(err) + ")");
+        }
+        while (GL11.glGetError() != GL11.GL_NO_ERROR) {
+            // drain
+        }
+    }
+
     private static int bufferSize(int target, int handle) {
         GL15.glBindBuffer(target, handle);
         int size = GL15.glGetBufferParameteri(target, GL15.GL_BUFFER_SIZE);

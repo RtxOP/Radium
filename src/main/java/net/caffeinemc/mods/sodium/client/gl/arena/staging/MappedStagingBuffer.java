@@ -95,6 +95,7 @@ public class MappedStagingBuffer implements StagingBuffer {
     private void addTransfer(ByteBuffer data, GlBuffer dst, long readOffset, long writeOffset) {
         this.mappedBuffer.map.write(data, (int) readOffset);
         this.pendingCopies.addLast(new CopyCommand(dst, readOffset, writeOffset, data.remaining()));
+        gg.sona.radium.diag.Diag.stagingWrite("stagingWrite", data, (int) readOffset, data.remaining(), dst, writeOffset);
     }
 
     @Override
@@ -117,6 +118,9 @@ public class MappedStagingBuffer implements StagingBuffer {
 
             commandList.copyBufferSubData(this.mappedBuffer.buffer, command.buffer, command.readOffset, command.writeOffset, command.bytes);
         }
+
+        gg.sona.radium.diag.Diag.stagingFlush("stagingFlush", this.mappedBuffer.buffer, this.start, this.pos, bytes);
+        gg.sona.radium.diag.Diag.glErr("stagingFlush");
 
         this.fencedRegions.addLast(new FencedMemoryRegion(commandList.createFence(), bytes));
 
