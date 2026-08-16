@@ -326,6 +326,17 @@ public final class Diag {
             float fz = (z / 1048576.0f) * 32.0f - 8.0f;
             sb.append(String.format(" v%d=(%.2f,%.2f,%.2f) c=%08X t=%08X l=%08X", i, fx, fy, fz, argb, tex, light));
         }
+        int[] segProbes = { 64, 66 };
+        for (int probe : segProbes) {
+            if (probe + 1 >= vertexTotal) break;
+            int base = probe * stride;
+            int hi = buf.getInt(base);
+            int lo = buf.getInt(base + 4);
+            int argb = buf.getInt(base + 8);
+            int y = (((hi >>> 10) & 0x3FF) << 10) | ((lo >>> 10) & 0x3FF);
+            float fy = (y / 1048576.0f) * 32.0f - 8.0f;
+            sb.append(String.format(" s%d_y=%.2f c=%08X", probe, fy, argb));
+        }
         System.out.println("[RadiumDiag] " + sb);
     }
 
@@ -687,15 +698,18 @@ public final class Diag {
         int bx = section.getOriginX() + 8;
         int bz = section.getOriginZ() + 8;
         StringBuilder sb = new StringBuilder();
-        sb.append("columnProbe sec=(").append(section.getChunkX()).append(",").append(section.getChunkY()).append(",").append(section.getChunkZ()).append(") at (")
-                .append(bx).append(",").append(bz).append(")");
-        for (int y = 0; y <= 6; y++) {
-            net.minecraft.util.BlockPos pos = new net.minecraft.util.BlockPos(bx, y, bz);
-            net.minecraft.block.state.IBlockState s = slice.getBlockState(pos);
-            net.minecraft.block.state.IBlockState v = ((net.minecraft.client.multiplayer.WorldClient) slice.getLevel()).getBlockState(pos);
-            sb.append("\n  y=").append(y)
-                    .append(" slice=").append(s.getBlock().getUnlocalizedName())
-                    .append(" world=").append(v.getBlock().getUnlocalizedName());
+        sb.append("columnProbe sec=(").append(section.getChunkX()).append(",").append(section.getChunkY()).append(",").append(section.getChunkZ()).append(")");
+        int[][] cols = { { 8, 8 }, { 7, 5 }, { 6, 5 }, { 15, 15 } };
+        for (int[] c : cols) {
+            sb.append("\n col(").append(bx - 8 + c[0]).append(",").append(bz - 8 + c[1]).append("):");
+            for (int y = 0; y <= 6; y++) {
+                net.minecraft.util.BlockPos pos = new net.minecraft.util.BlockPos(bx - 8 + c[0], y, bz - 8 + c[1]);
+                net.minecraft.block.state.IBlockState s = slice.getBlockState(pos);
+                net.minecraft.block.state.IBlockState v = ((net.minecraft.client.multiplayer.WorldClient) slice.getLevel()).getBlockState(pos);
+                sb.append(" ").append(y).append(":")
+                        .append(s.getBlock() == net.minecraft.init.Blocks.air ? "-" : s.getBlock().getUnlocalizedName().replace("tile.", "").substring(0, 3))
+                        .append(v.getBlock() == net.minecraft.init.Blocks.air ? "-" : v.getBlock().getUnlocalizedName().replace("tile.", "").substring(0, 3));
+            }
         }
         System.out.println("[RadiumDiag] " + sb);
     }
