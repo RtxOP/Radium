@@ -237,6 +237,10 @@ public final class LevelSlice implements IBlockAccess {
         }
     }
 
+    public WorldClient getLevel() {
+        return this.level;
+    }
+
     public @NotNull IBlockState getBlockState(BlockPos pos) {
         if (!this.volume.contains(pos)) {
             return EMPTY_BLOCK_STATE;

@@ -95,6 +95,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         BlockRenderContext context = new BlockRenderContext(slice, collector);
 
         try {
+            gg.sona.radium.diag.Diag.columnProbe(this.section, slice);
             for (int y = minY; y < maxY; y++) {
                 if (cancellationToken.isCancelled()) {
                     return null;

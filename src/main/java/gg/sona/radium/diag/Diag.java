@@ -382,6 +382,10 @@ public final class Diag {
             }
             sb.append(" draws=").append(batch.size).append(" outOfRange=").append(outOfRange);
 
+            if (reg != null) {
+                sb.append(" regionOff=(").append(String.format("%.2f,%.2f,%.2f", reg[0], reg[1], reg[2])).append(')');
+            }
+
             if (batch.size > 0) {
                 int count0 = batch.elementCounts.get(0);
                 int base0 = batch.baseVertices.get(0);
@@ -476,7 +480,7 @@ public final class Diag {
             } else {
                 ndc = "(cw=0)";
             }
-            sb.append(String.format(" v%d=(%.2f,%.2f,%.2f)c=%08X sec=%d->%s", i, fx, fy, fz, argb, drawId, ndc));
+            sb.append(String.format(" v%d=(%.2f,%.2f,%.2f)c=%08X sec=%d w=(%.1f,%.1f,%.1f)->%s", i, fx, fy, fz, argb, drawId, wx, wy, wz, ndc));
         }
     }
 
@@ -664,6 +668,36 @@ public final class Diag {
         lastLogAt.put("spriteProbe", now);
         System.out.println("[RadiumDiag] spriteProbe cull=" + cullFace + " light=" + lightFace
                 + " sprite=" + sprite.getIconName());
+    }
+
+    /**
+     * Log the block column at the center of a freshly-built section, as seen by the SLICE and as seen by the
+     * vanilla world. Any offset between the two tells us exactly where the slice's data is shifted relative to
+     * the real world (e.g. a Y misalignment that would render the terrain higher/lower than collision).
+     */
+    public static void columnProbe(net.caffeinemc.mods.sodium.client.render.chunk.RenderSection section,
+                                   net.caffeinemc.mods.sodium.client.world.LevelSlice slice) {
+        long now = System.currentTimeMillis();
+        Long prev = lastLogAt.get("columnProbe");
+        if (prev != null && now - prev < 5000L) {
+            return;
+        }
+        lastLogAt.put("columnProbe", now);
+
+        int bx = section.getOriginX() + 8;
+        int bz = section.getOriginZ() + 8;
+        StringBuilder sb = new StringBuilder();
+        sb.append("columnProbe sec=(").append(section.getChunkX()).append(",").append(section.getChunkY()).append(",").append(section.getChunkZ()).append(") at (")
+                .append(bx).append(",").append(bz).append(")");
+        for (int y = 0; y <= 6; y++) {
+            net.minecraft.util.BlockPos pos = new net.minecraft.util.BlockPos(bx, y, bz);
+            net.minecraft.block.state.IBlockState s = slice.getBlockState(pos);
+            net.minecraft.block.state.IBlockState v = ((net.minecraft.client.multiplayer.WorldClient) slice.getLevel()).getBlockState(pos);
+            sb.append("\n  y=").append(y)
+                    .append(" slice=").append(s.getBlock().getUnlocalizedName())
+                    .append(" world=").append(v.getBlock().getUnlocalizedName());
+        }
+        System.out.println("[RadiumDiag] " + sb);
     }
 
     private static int bufferSize(int target, int handle) {
