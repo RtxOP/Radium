@@ -433,6 +433,8 @@ public class GlBufferArena {
 
         upload.setResult(dst);
 
+        gg.sona.radium.diag.Diag.arenaUpload("arenaUpload", dst.getOffset(), elementCount, this.stride);
+
         return true;
     }
 

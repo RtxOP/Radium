@@ -473,6 +473,80 @@ public final class Diag {
         }
     }
 
+    /** Log the arena placement of a chunk-mesh upload (vertex units + byte offset). */
+    public static void arenaUpload(String key, long segmentOffset, int elementCount, int stride) {
+        long now = System.currentTimeMillis();
+        Long prev = lastLogAt.get(key);
+        if (prev != null && now - prev < 1000L) {
+            return;
+        }
+        lastLogAt.put(key, now);
+        System.out.println("[RadiumDiag] " + "arenaUpload segVert=" + segmentOffset
+                + " byteOff=" + (segmentOffset * stride) + " elemCount=" + elementCount
+                + " bytes=" + ((long) elementCount * stride) + " stride=" + stride);
+    }
+
+    /** Decode the pMeshData struct for a drawn section: base vertex, slice mask, facing list, per-slot counts. */
+    public static void meshDataProbe(long pMeshData, int sectionIndex) {
+        long now = System.currentTimeMillis();
+        Long prev = lastLogAt.get("meshDataProbe");
+        if (prev != null && now - prev < 1000L) {
+            return;
+        }
+        lastLogAt.put("meshDataProbe", now);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("meshData sec=").append(sectionIndex)
+                .append(" baseVertex=").append(net.caffeinemc.mods.sodium.client.render.chunk.data.SectionRenderDataUnsafe.getBaseVertex(pMeshData))
+                .append(" baseElement=").append(net.caffeinemc.mods.sodium.client.render.chunk.data.SectionRenderDataUnsafe.getBaseElement(pMeshData))
+                .append(" localIdx=").append(net.caffeinemc.mods.sodium.client.render.chunk.data.SectionRenderDataUnsafe.isLocalIndex(pMeshData))
+                .append(" sliceMask=").append(Integer.toHexString(net.caffeinemc.mods.sodium.client.render.chunk.data.SectionRenderDataUnsafe.getSliceMask(pMeshData)))
+                .append(" facingList=").append(Long.toHexString(net.caffeinemc.mods.sodium.client.render.chunk.data.SectionRenderDataUnsafe.getFacingList(pMeshData)));
+        for (int i = 0; i < net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing.COUNT; i++) {
+            sb.append(' ').append(i).append('=').append(net.caffeinemc.mods.sodium.client.render.chunk.data.SectionRenderDataUnsafe.getVertexCount(pMeshData, i));
+        }
+        System.out.println("[RadiumDiag] " + sb);
+    }
+
+    /** Scan the whole geometry buffer for non-zero content; log where the first non-zero word lives. */
+    public static void geometryScan(GlBuffer geometryBuffer, int stride) {
+        long now = System.currentTimeMillis();
+        Long prev = lastLogAt.get("geometryScan");
+        if (prev != null && now - prev < 1000L) {
+            return;
+        }
+        lastLogAt.put("geometryScan", now);
+
+        try {
+            int gSize = bufferSize(GL15.GL_ARRAY_BUFFER, geometryBuffer.handle());
+            ByteBuffer chunk = BufferUtils.createByteBuffer(64 * 1024);
+            long nonZeroWords = 0;
+            long firstNonZero = -1;
+            long read = 0;
+            while (read < gSize) {
+                int len = (int) Math.min(64 * 1024, gSize - read);
+                chunk.clear();
+                chunk.limit(len);
+                readbackAt(GL15.GL_ARRAY_BUFFER, geometryBuffer.handle(), read, chunk);
+                chunk.rewind();
+                for (int i = 0; i + 4 <= len; i += 4) {
+                    if (chunk.getInt(i) != 0) {
+                        nonZeroWords++;
+                        if (firstNonZero < 0) {
+                            firstNonZero = read + i;
+                        }
+                    }
+                }
+                read += len;
+            }
+            System.out.println("[RadiumDiag] geometryScan size=" + gSize + " nonZeroWords=" + nonZeroWords
+                    + " firstNonZeroByte=" + firstNonZero
+                    + (firstNonZero >= 0 ? " vert=" + (firstNonZero / stride) + " byteOff=" + firstNonZero : ""));
+        } catch (Throwable t) {
+            System.out.println("[RadiumDiag] geometryScan EX=" + t);
+        }
+    }
+
     private static int bufferSize(int target, int handle) {
         GL15.glBindBuffer(target, handle);
         int size = GL15.glGetBufferParameteri(target, GL15.GL_BUFFER_SIZE);

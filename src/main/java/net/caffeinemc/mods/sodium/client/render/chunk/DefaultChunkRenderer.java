@@ -109,6 +109,8 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
 
             gg.sona.radium.diag.Diag.drawProbe(region.getResources().getGeometryBuffer(),
                     useIndexedTessellation ? region.getResources().getIndexBuffer() : this.sharedIndexBuffer.getBufferObject(), batch);
+            gg.sona.radium.diag.Diag.geometryScan(region.getResources().getGeometryBuffer(),
+                    net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.impl.CompactChunkVertex.STRIDE);
             gg.sona.radium.diag.Diag.count("drawBatch", "drawBatch pass=" + renderPass
                     + " region=(" + region.getChunkX() + "," + region.getChunkY() + "," + region.getChunkZ() + ")"
                     + " draws=" + batch.size + " idxBytes=" + batch.getIndexBufferSize());
@@ -147,6 +149,8 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
             int sectionIndex = iterator.nextByteAsInt();
 
             long pMeshData = renderDataStorage.getDataPointer(sectionIndex);
+
+            gg.sona.radium.diag.Diag.meshDataProbe(pMeshData, sectionIndex);
 
             int chunkX = originX + LocalSectionIndex.unpackX(sectionIndex);
             int chunkY = originY + LocalSectionIndex.unpackY(sectionIndex);
