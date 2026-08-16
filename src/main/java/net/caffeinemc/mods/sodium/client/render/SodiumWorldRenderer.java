@@ -113,8 +113,6 @@ public class SodiumWorldRenderer {
     public static ChunkRenderMatrices captureGlMatrices() {
         Matrix4f projection = readGlMatrix(GL11.GL_PROJECTION_MATRIX);
         Matrix4f modelView = readGlMatrix(GL11.GL_MODELVIEW_MATRIX);
-        // Zero out translation to prevent double-applying camera eye translation with u_RegionOffset
-        modelView.setTranslation(0.0f, 0.0f, 0.0f);
         return new ChunkRenderMatrices(projection, modelView);
     }
 
