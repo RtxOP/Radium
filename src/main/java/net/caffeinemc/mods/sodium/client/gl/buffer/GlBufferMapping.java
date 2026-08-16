@@ -14,11 +14,12 @@ public class GlBufferMapping {
     }
 
     public void write(ByteBuffer data, int writeOffset) {
-        // LWJGL2 has no MemoryUtil.memCopy; a relative put from a positioned
-        // duplicate copies exactly data.remaining() bytes to the write offset.
+        // LWJGL2 has no MemoryUtil.memCopy; a relative put from a duplicate copies
+        // exactly data.remaining() bytes to the write offset without consuming the
+        // source buffer (memCopy does not advance the buffer's position either).
         ByteBuffer dst = this.map.duplicate();
         dst.position(writeOffset);
-        dst.put(data);
+        dst.put(data.duplicate());
     }
 
     public GlBuffer getBufferObject() {
